@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><title>Configuración</title></head>
+<body>
+  <h1>Configuración</h1>
+  <form method="post">
+    <div>
+      <label>Alquiler base:</label>
+      <input type="number" step="0.01" name="alquiler_base" value="{{ config.alquiler_base }}">
+    </div>
+    <div>
+      <label>Fecha de inicio de contrato:</label>
+      <input type="date" name="fecha_inicio_contrato" value="{{ config.fecha_inicio_contrato }}">
+    </div>
+    <div>
+      <label>Período de actualización por IPC (meses):</label>
+      <input type="number" name="periodo_actualizacion_meses" value="{{ config.periodo_actualizacion_meses }}">
+    </div>
+    <button type="submit">Guardar</button>
+  </form>
+</body>
+</html>
