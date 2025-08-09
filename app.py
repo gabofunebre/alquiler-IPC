@@ -133,10 +133,10 @@ def ipc_ultimos():
 @app.get("/")
 def index():
     return ipc_ultimos()
-
 @app.route("/adm", methods=["GET", "POST"])
 def admin():
     """Pantalla de login y configuración"""
+
     if session.get("logged_in"):
         config = _load_config()
         if request.method == "POST":
@@ -167,18 +167,17 @@ def admin():
             request.form.get("username") == ADMIN_USER
             and request.form.get("password") == ADMIN_PASS
         ):
+
             session.clear()
             session["logged_in"] = True
             session.permanent = False  # expira al cerrar el navegador
+
             return redirect(url_for("admin"))
         error = "Credenciales inválidas"
     return render_template("login.html", error=error)
-
-
 @app.post("/logout")
 def logout():
     session.clear()
     return redirect(url_for("admin"))
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
