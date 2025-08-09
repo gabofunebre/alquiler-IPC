@@ -214,7 +214,6 @@ def ipc_ultimos():
 def index():
     return ipc_ultimos()
 
-
 @app.get("/alquiler/tabla")
 def alquiler_tabla():
     config = _load_config()
@@ -279,13 +278,13 @@ def admin():
             request.form.get("username") == ADMIN_USER
             and request.form.get("password") == ADMIN_PASS
         ):
+
             session.clear()
             session["logged_in"] = True
             session.permanent = False  # expira al cerrar el navegador
             return redirect(url_for("admin"))
         error = "Credenciales inválidas"
     return render_template("login.html", error=error)
-
 
 @app.post("/logout")
 def logout():
