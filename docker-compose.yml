@@ -11,3 +11,9 @@ services:
     volumes:
       - ./config:/app/config
     restart: unless-stopped
+    networks:
+      - nginx_net
+
+networks:
+  nginx_net:
+    external: true
