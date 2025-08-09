@@ -1,14 +1,49 @@
-import os, csv, io, requests
+import os, csv, io, json, requests
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
-from flask import Flask, jsonify, request, abort
+from flask import (
+    Flask,
+    jsonify,
+    request,
+    abort,
+    render_template,
+    redirect,
+    url_for,
+    session,
+)
+from dotenv import load_dotenv
 
 CSV_URL = os.getenv(
     "CSV_URL",
     "https://infra.datos.gob.ar/catalog/sspm/dataset/145/distribution/145.3/download/indice-precios-al-consumidor-nivel-general-base-diciembre-2016-mensual.csv",
 )
 
+load_dotenv()
+
 app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", "changeme")
+
+ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASS = os.getenv("ADMIN_PASS", "admin")
+
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config", "config.json")
+
+
+def _load_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    return {
+        "alquiler_base": "",
+        "fecha_inicio_contrato": "",
+        "periodo_actualizacion_meses": "",
+    }
+
+
+def _save_config(data):
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    with open(CONFIG_FILE, "w", encoding="utf-8") as fh:
+        json.dump(data, fh)
 
 def _leer_csv():
     r = requests.get(CSV_URL, timeout=20)
@@ -93,6 +128,57 @@ def ipc_ultimos():
         "count": len(out),
         "data": out
     })
+
+
+@app.get("/")
+def index():
+    return ipc_ultimos()
+
+@app.route("/adm", methods=["GET", "POST"])
+def admin():
+    """Pantalla de login y configuración"""
+    if session.get("logged_in"):
+        config = _load_config()
+        if request.method == "POST":
+            config.update(
+                {
+                    "alquiler_base": request.form.get("alquiler_base", ""),
+                    "fecha_inicio_contrato": request.form.get(
+                        "fecha_inicio_contrato", ""
+                    ),
+                    "periodo_actualizacion_meses": request.form.get(
+                        "periodo_actualizacion_meses", ""
+                    ),
+                }
+            )
+            try:
+                _save_config(config)
+                if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                    return jsonify({"ok": True})
+            except Exception:
+                if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                    return jsonify({"ok": False}), 500
+                raise
+        return render_template("config.html", config=config)
+
+    error = None
+    if request.method == "POST":
+        if (
+            request.form.get("username") == ADMIN_USER
+            and request.form.get("password") == ADMIN_PASS
+        ):
+            session.clear()
+            session["logged_in"] = True
+            session.permanent = False  # expira al cerrar el navegador
+            return redirect(url_for("admin"))
+        error = "Credenciales inválidas"
+    return render_template("login.html", error=error)
+
+
+@app.post("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("admin"))
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
