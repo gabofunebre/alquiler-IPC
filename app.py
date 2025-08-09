@@ -212,7 +212,18 @@ def ipc_ultimos():
 
 @app.get("/")
 def index():
-    return ipc_ultimos()
+
+    config = _load_config()
+    tabla = []
+    try:
+        base = Decimal(config.get("alquiler_base"))
+        inicio = config.get("fecha_inicio_contrato", "")[:7]
+        periodo = int(config.get("periodo_actualizacion_meses") or 3)
+        tabla = generar_tabla_alquiler(base, inicio, periodo)
+    except Exception:
+        tabla = []
+    return render_template("index.html", tabla=tabla)
+
 
 @app.get("/alquiler/tabla")
 def alquiler_tabla():
@@ -278,7 +289,6 @@ def admin():
             request.form.get("username") == ADMIN_USER
             and request.form.get("password") == ADMIN_PASS
         ):
-
             session.clear()
             session["logged_in"] = True
             session.permanent = False  # expira al cerrar el navegador
