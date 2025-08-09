@@ -212,6 +212,7 @@ def ipc_ultimos():
 
 @app.get("/")
 def index():
+
     config = _load_config()
     tabla = []
     try:
@@ -294,7 +295,6 @@ def admin():
             return redirect(url_for("admin"))
         error = "Credenciales inválidas"
     return render_template("login.html", error=error)
-
 
 @app.post("/logout")
 def logout():
