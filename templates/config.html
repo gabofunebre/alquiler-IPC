@@ -107,6 +107,9 @@
         showAlert('Error al guardar configuración', 'danger');
       });
     });
+    window.addEventListener('beforeunload', () => {
+      navigator.sendBeacon('{{ url_for('app.logout') }}', '');
+    });
   </script>
 </body>
 </html>

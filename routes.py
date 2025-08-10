@@ -85,7 +85,9 @@ def index():
         if request.method == "POST":
             nombre = request.form.get("name", "").strip().lower()
             if nombre and nombre in load_users():
+                session.clear()
                 session["user"] = nombre
+                session.permanent = False  # expira al cerrar el navegador
                 return redirect(url_for("app.index"))
             error = "Usuario no encontrado"
         return render_template("user_login.html", error=error)
@@ -198,5 +200,8 @@ def admin_delete_user():
 
 @bp.post("/logout")
 def logout():
+    is_admin = session.get("logged_in")
     session.clear()
-    return redirect(url_for("app.admin"))
+    if is_admin:
+        return redirect(url_for("app.admin"))
+    return redirect(url_for("app.index"))
