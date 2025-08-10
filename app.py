@@ -1,5 +1,5 @@
 import os, csv, io, json, requests
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from flask import (
     Flask,
@@ -99,6 +99,7 @@ def _add_months(ym: str, m: int) -> str:
 
 def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int, meses: int = 12):
     ipc = _ipc_dict()
+    hoy_ym = date.today().strftime("%Y-%m")
     meses_es = [
         "Enero",
         "Febrero",
@@ -162,15 +163,16 @@ def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int
 
         dt = datetime.strptime(ym, "%Y-%m")
         nombre_mes = f"{meses_es[dt.month - 1]} {dt.year}"
-
+        future = ym > hoy_ym
         tabla.append(
             {
                 "tipo": "mes",
                 "mes": nombre_mes,
                 "ym": ym,
-                "valor": float(valor_mes),
-                "provisorio": provisorio_periodo,
+                "valor": float(valor_mes) if not future else None,
+                "provisorio": provisorio_periodo if not future else False,
                 "ipc": float(ipc_pct) if ipc_pct is not None else None,
+                "future": future,
             }
         )
 
@@ -180,7 +182,8 @@ def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int
                     "tipo": "ajuste",
                     "mes": f"Ajuste {nombre_mes}",
                     "ym": ym,
-                    "valor": float(ajuste_valor),
+                    "valor": float(ajuste_valor) if not future else None,
+                    "future": future,
                 }
             )
 
@@ -269,7 +272,9 @@ def index():
         tabla = generar_tabla_alquiler(base, inicio, periodo)
     except Exception:
         tabla = []
-    return render_template("index.html", tabla=tabla)
+    return render_template(
+        "index.html", tabla=tabla, fecha_hoy=date.today().strftime("%d-%m-%Y")
+    )
 
 
 @app.get("/alquiler/tabla")
@@ -328,7 +333,12 @@ def admin():
             tabla = generar_tabla_alquiler(base, inicio, periodo)
         except Exception:
             tabla = []
-        return render_template("config.html", config=config, tabla=tabla)
+        return render_template(
+            "config.html",
+            config=config,
+            tabla=tabla,
+            fecha_hoy=date.today().strftime("%d-%m-%Y"),
+        )
 
     error = None
     if request.method == "POST":
