@@ -1,7 +1,7 @@
 DC ?= docker compose
 SERVICE ?=
 
-.PHONY: up down rebuild start stop restart
+.PHONY: up down rebuild start stop restart logs
 
 up:
 	$(DC) up -d --build $(SERVICE)
@@ -22,3 +22,6 @@ stop:
 
 restart:
 	$(DC) restart $(SERVICE)
+
+logs:
+	$(DC) logs -f --tail=200 $(SERVICE)
