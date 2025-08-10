@@ -114,29 +114,45 @@ def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int
         "Diciembre",
     ]
     tabla = []
-    valores = {0: Decimal(alquiler_base).quantize(Decimal("1"), rounding=ROUND_HALF_UP)}
+    # Valor vigente antes del inicio (V_0)
+    valor_actual = Decimal(alquiler_base).quantize(
+        Decimal("1"), rounding=ROUND_HALF_UP
+    )
+    valor_periodo = valor_actual  # valor para meses posteriores del período
+    provisorio_periodo = False
+
     for i in range(meses):
         ym = _add_months(mes_inicio, i)
-        k = i // periodo
-        if k not in valores:
-            Uk = _add_months(mes_inicio, k * periodo)
-            m1 = _add_months(Uk, -3)
-            m2 = _add_months(Uk, -2)
-            m3 = _add_months(Uk, -1)
-            if all(m in ipc for m in (m1, m2, m3)):
-                F = (Decimal("1") + ipc[m1]) * (Decimal("1") + ipc[m2]) * (Decimal("1") + ipc[m3])
-                valores[k] = (valores[k - 1] * F).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-            else:
-                valores[k] = valores[k - 1]
-        valor = valores[k]
-        provisorio = False
-        Uk = _add_months(mes_inicio, k * periodo)
-        m1 = _add_months(Uk, -3)
-        m2 = _add_months(Uk, -2)
-        m3 = _add_months(Uk, -1)
-        if k > 0 and any(m not in ipc for m in (m1, m2, m3)):
-            provisorio = True
+        offset = i % periodo
 
+        ajuste_valor = None
+        if offset == 0:
+            k = i // periodo
+            Uk = _add_months(mes_inicio, k * periodo)
+            if k > 0:
+                meses_previos = [_add_months(Uk, -t) for t in range(1, periodo + 1)]
+                if all(m in ipc for m in meses_previos):
+                    F = Decimal("1")
+                    for m in meses_previos:
+                        F *= Decimal("1") + ipc[m]
+                    nuevo_valor = (valor_actual * F).quantize(
+                        Decimal("1"), rounding=ROUND_HALF_UP
+                    )
+                    ajuste_valor = (nuevo_valor - valor_actual).quantize(
+                        Decimal("1"), rounding=ROUND_HALF_UP
+                    )
+                    valor_periodo = nuevo_valor
+                    provisorio_periodo = False
+                else:
+                    valor_periodo = valor_actual
+                    provisorio_periodo = True
+            else:
+                valor_periodo = valor_actual
+                provisorio_periodo = False
+
+            valor_mes = valor_actual
+        else:
+            valor_mes = valor_periodo
 
         ipc_pct = None
         if ym in ipc:
@@ -146,14 +162,30 @@ def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int
 
         dt = datetime.strptime(ym, "%Y-%m")
         nombre_mes = f"{meses_es[dt.month - 1]} {dt.year}"
+
         tabla.append(
             {
+                "tipo": "mes",
                 "mes": nombre_mes,
-                "valor": float(valor),
-                "provisorio": provisorio,
+                "ym": ym,
+                "valor": float(valor_mes),
+                "provisorio": provisorio_periodo,
                 "ipc": float(ipc_pct) if ipc_pct is not None else None,
             }
         )
+
+        if ajuste_valor is not None:
+            tabla.append(
+                {
+                    "tipo": "ajuste",
+                    "mes": f"Ajuste {nombre_mes}",
+                    "ym": ym,
+                    "valor": float(ajuste_valor),
+                }
+            )
+
+        if offset == periodo - 1 and not provisorio_periodo:
+            valor_actual = valor_periodo
 
     return tabla
 
