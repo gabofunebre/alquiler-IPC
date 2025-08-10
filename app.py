@@ -136,9 +136,25 @@ def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int
         m3 = _add_months(Uk, -1)
         if k > 0 and any(m not in ipc for m in (m1, m2, m3)):
             provisorio = True
+
+
+        ipc_pct = None
+        if ym in ipc:
+            ipc_pct = (ipc[ym] * Decimal("100")).quantize(
+                Decimal("0.1"), rounding=ROUND_HALF_UP
+            )
+
         dt = datetime.strptime(ym, "%Y-%m")
         nombre_mes = f"{meses_es[dt.month - 1]} {dt.year}"
-        tabla.append({"mes": nombre_mes, "valor": float(valor), "provisorio": provisorio})
+        tabla.append(
+            {
+                "mes": nombre_mes,
+                "valor": float(valor),
+                "provisorio": provisorio,
+                "ipc": float(ipc_pct) if ipc_pct is not None else None,
+            }
+        )
+
     return tabla
 
 @app.get("/health")
@@ -212,7 +228,6 @@ def ipc_ultimos():
 
 @app.get("/")
 def index():
-
     config = _load_config()
     tabla = []
     try:
