@@ -37,6 +37,7 @@
           <option value="{{ n }}" {% if periodo_sel == n %}selected{% endif %}>{{ n }}</option>
           {% endfor %}
         </select>
+
       </div>
       <button type="submit" class="btn btn-primary">Guardar</button>
     </form>
@@ -45,13 +46,16 @@
     <h2 class="h5 mt-4">Tabla de alquiler</h2>
     <table class="table table-striped">
       <thead>
+
         <tr><th>Mes</th><th>IPC</th><th>Valor</th><th></th></tr>
+
       </thead>
       <tbody>
       {% for fila in tabla %}
         <tr>
           <td>{{ fila.mes }}</td>
           <td>{% if fila.ipc is not none %}{{ '{:.1f}'.format(fila.ipc)|replace('.', ',') }}%{% endif %}</td>
+
           <td>${{ '{:,.0f}'.format(fila.valor) }}</td>
           <td>{% if fila.provisorio %}<span class="badge bg-warning text-dark">Provisorio</span>{% endif %}</td>
         </tr>

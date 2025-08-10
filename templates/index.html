@@ -18,6 +18,7 @@
         {% for fila in tabla %}
         <tr>
           <td>{{ fila.mes }}</td>
+
           <td>{% if fila.ipc is not none %}{{ '{:.1f}'.format(fila.ipc)|replace('.', ',') }}%{% endif %}</td>
           <td>${{ '{:,.0f}'.format(fila.valor) }}</td>
           <td>{% if fila.provisorio %}<span class="badge bg-warning text-dark">Provisorio</span>{% endif %}</td>
