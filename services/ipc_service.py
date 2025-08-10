@@ -1,20 +1,39 @@
 import csv
 import io
+import os
+import time
 import requests
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from .config_service import CSV_URL
 
 
+CACHE_PATH = os.path.join("config", "ipc.csv")
+CACHE_TTL = 24 * 60 * 60  # 24 hours in seconds
+
+
 def leer_csv():
-    """Download and parse the IPC CSV file."""
+    """Leer y cachear el CSV del IPC."""
+    # Usar archivo en caché si existe y es reciente
+    if os.path.exists(CACHE_PATH):
+        age = time.time() - os.path.getmtime(CACHE_PATH)
+        if age < CACHE_TTL:
+            with open(CACHE_PATH, "r", encoding="utf-8") as f:
+                rows = list(csv.reader(f))
+            if not rows:
+                raise RuntimeError("CSV vacío")
+            return rows[0], rows[1:]
+
+    # Descargar CSV y guardar en caché
     r = requests.get(CSV_URL, timeout=20)
     r.raise_for_status()
+    os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
+    with open(CACHE_PATH, "wb") as f:
+        f.write(r.content)
     rows = list(csv.reader(io.StringIO(r.content.decode("utf-8"))))
     if not rows:
         raise RuntimeError("CSV vacío")
-    header, data_rows = rows[0], rows[1:]
-    return header, data_rows
+    return rows[0], rows[1:]
 
 
 def parse_fechas(f):
