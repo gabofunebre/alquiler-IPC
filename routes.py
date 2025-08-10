@@ -20,6 +20,7 @@ from services.config_service import (
 )
 from services.ipc_service import leer_csv, parse_fechas
 from services.alquiler_service import generar_tabla_alquiler
+from services.user_service import load_users, add_user, delete_user
 
 bp = Blueprint("app", __name__)
 
@@ -77,8 +78,18 @@ def ipc_ultimos():
     return jsonify({"source": CSV_URL, "last_month": last_date, "count": len(out), "data": out})
 
 
-@bp.get("/")
+@bp.route("/", methods=["GET", "POST"])
 def index():
+    if not session.get("user"):
+        error = None
+        if request.method == "POST":
+            nombre = request.form.get("name", "").strip().lower()
+            if nombre and nombre in load_users():
+                session["user"] = nombre
+                return redirect(url_for("app.index"))
+            error = "Usuario no encontrado"
+        return render_template("user_login.html", error=error)
+
     config = load_config()
     tabla = []
     try:
@@ -118,6 +129,7 @@ def admin():
     """Pantalla de login y configuración"""
     if session.get("logged_in"):
         config = load_config()
+        users = load_users()
         if request.method == "POST":
             config.update(
                 {
@@ -147,6 +159,7 @@ def admin():
             config=config,
             tabla=tabla,
             fecha_hoy=date.today().strftime("%d-%m-%Y"),
+            users=users,
         )
 
     error = None
@@ -161,6 +174,26 @@ def admin():
             return redirect(url_for("app.admin"))
         error = "Credenciales inválidas"
     return render_template("login.html", error=error)
+
+
+@bp.post("/adm/users/add")
+def admin_add_user():
+    if not session.get("logged_in"):
+        abort(403)
+    nombre = request.form.get("new_user", "").strip().lower()
+    if nombre:
+        add_user(nombre)
+    return redirect(url_for("app.admin"))
+
+
+@bp.post("/adm/users/delete")
+def admin_delete_user():
+    if not session.get("logged_in"):
+        abort(403)
+    nombre = request.form.get("user", "").strip().lower()
+    if nombre:
+        delete_user(nombre)
+    return redirect(url_for("app.admin"))
 
 
 @bp.post("/logout")
