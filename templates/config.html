@@ -20,6 +20,19 @@
   </nav>
   <div class="container">
     <div id="alert-placeholder"></div>
+    <h2 class="h5">Usuarios</h2>
+    <form class="mb-3 d-flex" action="{{ url_for('app.admin_add_user') }}" method="post">
+      <input type="text" class="form-control me-2" name="new_user" placeholder="Nombre">
+      <button class="btn btn-primary" type="submit">Agregar usuario</button>
+    </form>
+    <form class="mb-4 d-flex" action="{{ url_for('app.admin_delete_user') }}" method="post">
+      <select class="form-select me-2" name="user">
+        {% for u in users %}
+        <option value="{{ u }}">{{ u }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-danger" type="submit">Eliminar usuario</button>
+    </form>
     <form id="config-form" method="post">
       <div class="mb-3">
         <label class="form-label">Alquiler base</label>
