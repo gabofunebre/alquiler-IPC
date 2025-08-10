@@ -137,6 +137,7 @@ def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int
         if k > 0 and any(m not in ipc for m in (m1, m2, m3)):
             provisorio = True
 
+
         ipc_pct = None
         if ym in ipc:
             ipc_pct = (ipc[ym] * Decimal("100")).quantize(
@@ -153,6 +154,7 @@ def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int
                 "ipc": float(ipc_pct) if ipc_pct is not None else None,
             }
         )
+
     return tabla
 
 @app.get("/health")
@@ -308,7 +310,6 @@ def admin():
             return redirect(url_for("admin"))
         error = "Credenciales inválidas"
     return render_template("login.html", error=error)
-
 
 @app.post("/logout")
 def logout():
