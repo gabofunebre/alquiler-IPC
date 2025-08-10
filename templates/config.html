@@ -13,7 +13,7 @@
   <nav class="navbar navbar-light bg-light mb-4">
     <div class="container-fluid">
       <span class="navbar-brand mb-0 h1">Configuración</span>
-      <form class="d-flex" action="{{ url_for('logout') }}" method="post">
+      <form class="d-flex" action="{{ url_for('app.logout') }}" method="post">
         <button class="btn btn-outline-secondary" type="submit">Salir</button>
       </form>
     </div>
@@ -78,7 +78,7 @@
     form.addEventListener('submit', function(e) {
       e.preventDefault();
       overlay.style.display = 'flex';
-      fetch('{{ url_for("admin") }}', {
+      fetch('{{ url_for("app.admin") }}', {
         method: 'POST',
         body: new FormData(form),
         headers: {'X-Requested-With': 'XMLHttpRequest'}
