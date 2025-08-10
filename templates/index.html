@@ -13,7 +13,6 @@
     <table class="table table-striped">
       <thead>
         <tr><th>Mes</th><th>IPC</th><th>Valor</th><th></th></tr>
-
       </thead>
       <tbody>
         {% for fila in tabla %}
@@ -21,7 +20,6 @@
           <td>{{ fila.mes }}</td>
 
           <td>{% if fila.ipc is not none %}{{ '{:.1f}'.format(fila.ipc)|replace('.', ',') }}%{% endif %}</td>
-
           <td>${{ '{:,.0f}'.format(fila.valor) }}</td>
           <td>{% if fila.provisorio %}<span class="badge bg-warning text-dark">Provisorio</span>{% endif %}</td>
         </tr>

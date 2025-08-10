@@ -2,6 +2,7 @@ services:
   ipc-api:
     build: .
     container_name: alquiler-IPC
+
     env_file: .env
     environment:
       # Podés overridear la URL si fuese necesario

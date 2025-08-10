@@ -31,7 +31,13 @@
       </div>
       <div class="mb-3">
         <label class="form-label">Período de actualización por IPC (meses)</label>
-        <input type="number" class="form-control" name="periodo_actualizacion_meses" value="{{ config.periodo_actualizacion_meses }}">
+        {% set periodo_sel = config.periodo_actualizacion_meses|default(3, true)|int %}
+        <select class="form-select" name="periodo_actualizacion_meses">
+          {% for n in range(1, 13) %}
+          <option value="{{ n }}" {% if periodo_sel == n %}selected{% endif %}>{{ n }}</option>
+          {% endfor %}
+        </select>
+
       </div>
       <button type="submit" class="btn btn-primary">Guardar</button>
     </form>
@@ -48,7 +54,6 @@
       {% for fila in tabla %}
         <tr>
           <td>{{ fila.mes }}</td>
-
           <td>{% if fila.ipc is not none %}{{ '{:.1f}'.format(fila.ipc)|replace('.', ',') }}%{% endif %}</td>
 
           <td>${{ '{:,.0f}'.format(fila.valor) }}</td>
@@ -58,7 +63,6 @@
       </tbody>
     </table>
     {% endif %}
-
   </div>
   <div id="overlay"><div class="spinner-border text-primary" role="status"></div></div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -84,9 +88,7 @@
       }).then(data => {
         overlay.style.display = 'none';
         showAlert('Configuración guardada correctamente', 'success');
-
         setTimeout(() => window.location.reload(), 500);
-
       }).catch(() => {
         overlay.style.display = 'none';
         showAlert('Error al guardar configuración', 'danger');
