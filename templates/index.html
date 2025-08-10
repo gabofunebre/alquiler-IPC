@@ -10,18 +10,19 @@
   <div class="container py-4">
     <h1 class="h4 mb-4">Tabla de alquiler</h1>
     {% if tabla %}
-    <table class="table table-striped">
+    <div class="text-end mb-2">Fecha de hoy: {{ fecha_hoy }}</div>
+    <table class="table table-striped table-bordered">
       <thead>
         <tr><th>Mes</th><th>IPC</th><th>Valor</th><th></th></tr>
       </thead>
       <tbody>
         {% for fila in tabla %}
-        <tr>
+        <tr class="{% if fila.future %}opacity-50{% endif %}{% if fila.tipo == 'ajuste' %} fst-italic{% endif %}">
           <td>{{ fila.mes }}</td>
 
-          <td>{% if fila.ipc is not none %}{{ '{:.1f}'.format(fila.ipc)|replace('.', ',') }}%{% endif %}</td>
-          <td>${{ '{:,.0f}'.format(fila.valor) }}</td>
-          <td>{% if fila.provisorio %}<span class="badge bg-warning text-dark">Provisorio</span>{% endif %}</td>
+          <td>{% if fila.ipc is defined and fila.ipc is not none %}{{ '{:.1f}'.format(fila.ipc)|replace('.', ',') }}%{% endif %}</td>
+          <td>{% if fila.valor is not none %}${{ '{:,.0f}'.format(fila.valor) }}{% endif %}</td>
+          <td>{% if fila.provisorio is defined and fila.provisorio %}<span class="badge bg-warning text-dark">Provisorio</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
