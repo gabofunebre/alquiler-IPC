@@ -163,7 +163,6 @@ def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int
 
         dt = datetime.strptime(ym, "%Y-%m")
         nombre_mes = f"{meses_es[dt.month - 1]} {dt.year}"
-
         future = ym > hoy_ym
         tabla.append(
             {
