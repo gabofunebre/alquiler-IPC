@@ -38,6 +38,8 @@ def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int
 
     for i in range(meses):
         ym = add_months(mes_inicio, i)
+        if ym > max_ym:
+            break
         offset = i % periodo
         period_idx = i // periodo
         mostrar_valor = ym <= max_ym
