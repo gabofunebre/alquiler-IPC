@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tabla de alquiler</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .periodo0.offset0 {background-color:#ffffff;}
+    .periodo0.offset1 {background-color:#f2f2f2;}
+    .periodo1.offset0 {background-color:#e7f5ff;}
+    .periodo1.offset1 {background-color:#d0ebff;}
+    .ajuste {background-color:#e6ffe6;}
+  </style>
 </head>
 <body>
   <nav class="navbar navbar-light bg-light mb-4">
@@ -19,18 +26,16 @@
     <h1 class="h4 mb-4">Tabla de alquiler</h1>
     {% if tabla %}
     <div class="text-end mb-2">Fecha de hoy: {{ fecha_hoy }}</div>
-    <table class="table table-striped table-bordered">
+    <table class="table table-bordered">
       <thead>
-        <tr><th>Mes</th><th>IPC</th><th>Valor</th><th></th></tr>
+        <tr><th>Mes</th><th>IPC</th><th>Valor</th></tr>
       </thead>
       <tbody>
         {% for fila in tabla %}
-        <tr class="{% if fila.future %}opacity-50{% endif %}{% if fila.tipo == 'ajuste' %} fst-italic{% endif %}">
+        <tr class="{% if fila.tipo == 'ajuste' %}ajuste fst-italic{% else %}periodo{{ fila.periodo % 2 }} offset{{ fila.offset % 2 }}{% endif %}{% if fila.future %} opacity-50{% endif %}">
           <td>{{ fila.mes }}</td>
-
           <td>{% if fila.ipc is defined and fila.ipc is not none %}{{ '{:.1f}'.format(fila.ipc)|replace('.', ',') }}%{% endif %}</td>
-          <td>{% if fila.valor is not none %}${{ '{:,.0f}'.format(fila.valor) }}{% endif %}</td>
-          <td>{% if fila.provisorio is defined and fila.provisorio %}<span class="badge bg-warning text-dark">Provisorio</span>{% endif %}</td>
+          <td>{% if fila.valor is not none %}${{ '{:,.0f}'.format(fila.valor) }}{% endif %}{% if fila.provisorio is defined and fila.provisorio %} <span class="badge bg-warning text-dark">Provisorio</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
