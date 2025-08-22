@@ -30,6 +30,7 @@ def add_months(ym: str, m: int) -> str:
 def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int, meses: int = 12):
     ipc = ipc_dict()
     hoy_ym = date.today().strftime("%Y-%m")
+    max_ym = add_months(hoy_ym, 1)
     tabla = []
     valor_actual = Decimal(alquiler_base).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     valor_periodo = valor_actual
@@ -37,6 +38,8 @@ def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int
 
     for i in range(meses):
         ym = add_months(mes_inicio, i)
+        if ym > max_ym:
+            break
         offset = i % periodo
         ajuste_valor = None
         if offset == 0:
@@ -67,15 +70,18 @@ def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int
         dt = datetime.strptime(ym, "%Y-%m")
         nombre_mes = f"{MESES_ES[dt.month - 1]} {dt.year}"
         future = ym > hoy_ym
+        period_idx = i // periodo
         tabla.append(
             {
                 "tipo": "mes",
                 "mes": nombre_mes,
                 "ym": ym,
-                "valor": float(valor_mes) if not future else None,
+                "valor": float(valor_mes),
                 "provisorio": provisorio_periodo if not future else False,
                 "ipc": float(ipc_pct) if ipc_pct is not None else None,
                 "future": future,
+                "periodo": period_idx,
+                "offset": offset,
             }
         )
         if ajuste_valor is not None:
@@ -84,8 +90,9 @@ def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int
                     "tipo": "ajuste",
                     "mes": f"Ajuste {nombre_mes}",
                     "ym": ym,
-                    "valor": float(ajuste_valor) if not future else None,
+                    "valor": float(ajuste_valor),
                     "future": future,
+                    "periodo": period_idx,
                 }
             )
         if offset == periodo - 1 and not provisorio_periodo:
