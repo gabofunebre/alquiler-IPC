@@ -19,7 +19,7 @@ from services.config_service import (
     CSV_URL,
 )
 from services.ipc_service import leer_csv, parse_fechas
-from services.alquiler_service import generar_tabla_alquiler
+from services.alquiler_service import generar_tabla_alquiler, meses_hasta_fin_anio
 from services.user_service import load_users, add_user, delete_user
 
 bp = Blueprint("app", __name__)
@@ -98,7 +98,8 @@ def index():
         base = Decimal(config.get("alquiler_base"))
         inicio = config.get("fecha_inicio_contrato", "")[:7]
         periodo = int(config.get("periodo_actualizacion_meses") or 3)
-        tabla = generar_tabla_alquiler(base, inicio, periodo)
+        meses = meses_hasta_fin_anio(inicio)
+        tabla = generar_tabla_alquiler(base, inicio, periodo, meses)
     except Exception:
         tabla = []
     return render_template("index.html", tabla=tabla, fecha_hoy=date.today().strftime("%d-%m-%Y"))
@@ -115,7 +116,11 @@ def alquiler_tabla():
             config.get("periodo_actualizacion_meses") or 3,
         )
     )
-    meses = int(request.args.get("meses", "12"))
+    meses_param = request.args.get("meses")
+    if meses_param is not None:
+        meses = int(meses_param)
+    else:
+        meses = meses_hasta_fin_anio(inicio[:7])
     if not base or not inicio:
         abort(400, "Faltan parámetros")
     try:
@@ -153,7 +158,8 @@ def admin():
             base = Decimal(config.get("alquiler_base"))
             inicio = config.get("fecha_inicio_contrato", "")[:7]
             periodo = int(config.get("periodo_actualizacion_meses") or 3)
-            tabla = generar_tabla_alquiler(base, inicio, periodo)
+            meses = meses_hasta_fin_anio(inicio)
+            tabla = generar_tabla_alquiler(base, inicio, periodo, meses)
         except Exception:
             tabla = []
         return render_template(

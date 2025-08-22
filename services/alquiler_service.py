@@ -27,10 +27,21 @@ def add_months(ym: str, m: int) -> str:
     return f"{y:04d}-{month:02d}"
 
 
-def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int, meses: int = 12):
+def meses_hasta_fin_anio(mes_inicio: str) -> int:
+    """Return number of months from mes_inicio up to December of current year."""
+    inicio_dt = datetime.strptime(mes_inicio, "%Y-%m")
+    fin_dt = datetime(date.today().year, 12, 1)
+    return (fin_dt.year - inicio_dt.year) * 12 + (fin_dt.month - inicio_dt.month) + 1
+
+
+def generar_tabla_alquiler(
+    alquiler_base: Decimal, mes_inicio: str, periodo: int, meses: int | None = None
+):
     ipc = ipc_dict()
     hoy_ym = date.today().strftime("%Y-%m")
     max_ym = add_months(hoy_ym, 1)
+    if meses is None:
+        meses = meses_hasta_fin_anio(mes_inicio)
     tabla = []
     valor_actual = Decimal(alquiler_base).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     valor_periodo = valor_actual
@@ -38,8 +49,6 @@ def generar_tabla_alquiler(alquiler_base: Decimal, mes_inicio: str, periodo: int
 
     for i in range(meses):
         ym = add_months(mes_inicio, i)
-        if ym > max_ym:
-            break
         offset = i % periodo
         period_idx = i // periodo
         mostrar_valor = ym <= max_ym
