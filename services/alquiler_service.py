@@ -107,8 +107,11 @@ def generar_tabla_alquiler(
                     "valor": float(ajuste_valor) if (mostrar_valor and ajuste_valor is not None) else None,
                     "future": future,
                     "periodo": period_idx,
+                    "fin_periodo": True,
                 }
             )
         if offset == periodo - 1 and mostrar_valor and not provisorio_periodo:
             valor_actual = valor_periodo
+    if tabla:
+        tabla[-1]["fin_periodo"] = True
     return tabla

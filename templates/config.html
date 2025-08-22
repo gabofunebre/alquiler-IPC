@@ -9,10 +9,12 @@
     #overlay {position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,.8);display:none;align-items:center;justify-content:center;z-index:1000;}
     .periodo0.offset0 td {background-color:#ffffff;}
     .periodo0.offset1 td {background-color:#f2f2f2;}
-    .periodo1.offset0 td {background-color:#e7f5ff;}
-    .periodo1.offset1 td {background-color:#d0ebff;}
-    .ajuste td {background-color:#e6ffe6;}
-  </style>
+      .periodo1.offset0 td {background-color:#e7f5ff;}
+      .periodo1.offset1 td {background-color:#d0ebff;}
+      .ajuste td {background-color:#e6ffe6;}
+      .period-end td {border-bottom:2px solid #000 !important;}
+      .period-end + tr td {border-top:0 !important;}
+    </style>
 </head>
 <body>
   <nav class="navbar navbar-light bg-light mb-4">
@@ -68,12 +70,12 @@
         <tr><th>Mes</th><th>IPC</th><th>Valor</th></tr>
       </thead>
       <tbody>
-      {% for fila in tabla %}
-        <tr class="{% if fila.tipo == 'ajuste' %}ajuste fst-italic{% else %}periodo{{ fila.periodo % 2 }} offset{{ fila.offset % 2 }}{% endif %}">
-          <td>{{ fila.mes }}</td>
-          <td>{% if fila.ipc is defined and fila.ipc is not none %}{{ '{:.1f}'.format(fila.ipc)|replace('.', ',') }}%{% endif %}</td>
-          <td>{% if fila.valor is not none %}${{ '{:,.0f}'.format(fila.valor) }}{% endif %}{% if fila.provisorio is defined and fila.provisorio %} <span class="badge bg-warning text-dark">Provisorio</span>{% endif %}</td>
-        </tr>
+        {% for fila in tabla %}
+          <tr class="{% if fila.tipo == 'ajuste' %}ajuste fst-italic{% else %}periodo{{ fila.periodo % 2 }} offset{{ fila.offset % 2 }}{% endif %}{% if fila.fin_periodo %} period-end{% endif %}">
+            <td>{{ fila.mes }}</td>
+            <td>{% if fila.ipc is defined and fila.ipc is not none %}{{ '{:.1f}'.format(fila.ipc)|replace('.', ',') }}%{% endif %}</td>
+            <td>{% if fila.valor is not none %}${{ '{:,.0f}'.format(fila.valor) }}{% endif %}{% if fila.provisorio is defined and fila.provisorio %} <span class="badge bg-warning text-dark">Provisorio</span>{% endif %}</td>
+          </tr>
       {% endfor %}
       </tbody>
     </table>
