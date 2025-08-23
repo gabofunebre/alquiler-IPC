@@ -118,5 +118,6 @@ def generar_tabla_alquiler(
             valor_actual = valor_periodo
 
     if tabla and not tabla[-1].get("fin_periodo"):
+
         tabla[-1]["fin_periodo"] = True
     return tabla
