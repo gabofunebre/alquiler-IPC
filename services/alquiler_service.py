@@ -77,7 +77,9 @@ def generar_tabla_alquiler(
                 else:
                     valor_periodo = valor_actual
                     provisorio_periodo = False
-                valor_mes = valor_actual
+                valor_mes = valor_periodo
+                if i > 0:
+                    tabla[-1]["fin_periodo"] = True
             else:
                 valor_mes = valor_periodo
             if ym in ipc:
@@ -86,30 +88,18 @@ def generar_tabla_alquiler(
         dt = datetime.strptime(ym, "%Y-%m")
         nombre_mes = f"{MESES_ES[dt.month - 1]} {dt.year}"
 
-        if offset == 0 and i > 0:
-            tabla.append(
-                {
-                    "tipo": "ajuste",
-                    "mes": f"Ajuste {nombre_mes}",
-                    "ym": ym,
-                    "valor": float(ajuste_valor) if (mostrar_valor and ajuste_valor is not None) else None,
-                    "future": future,
-                    "periodo": period_idx,
-                    "fin_periodo": True,
-                }
-            )
-
         tabla.append(
             {
-                "tipo": "mes",
                 "mes": nombre_mes,
                 "ym": ym,
                 "valor": float(valor_mes) if valor_mes is not None else None,
+                "ajuste": float(ajuste_valor) if (mostrar_valor and ajuste_valor is not None) else None,
                 "provisorio": provisorio_periodo if (mostrar_valor and not future) else False,
                 "ipc": float(ipc_pct) if ipc_pct is not None else None,
                 "future": future,
                 "periodo": period_idx,
                 "offset": offset,
+                "fin_periodo": False,
             }
         )
         if offset == periodo - 1 and mostrar_valor and not provisorio_periodo:
