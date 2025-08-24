@@ -78,8 +78,6 @@ def generar_tabla_alquiler(
                     valor_periodo = valor_actual
                     provisorio_periodo = False
                 valor_mes = valor_periodo
-                if i > 0:
-                    tabla[-1]["fin_periodo"] = True
             else:
                 valor_mes = valor_periodo
             if ym in ipc:
@@ -99,11 +97,8 @@ def generar_tabla_alquiler(
                 "future": future,
                 "periodo": period_idx,
                 "offset": offset,
-                "fin_periodo": False,
             }
         )
         if offset == periodo - 1 and mostrar_valor and not provisorio_periodo:
             valor_actual = valor_periodo
-    if tabla:
-        tabla[-1]["fin_periodo"] = True
     return tabla
