@@ -7,8 +7,8 @@ services:
     environment:
       # Podés overridear la URL si fuese necesario
       CSV_URL: "https://infra.datos.gob.ar/catalog/sspm/dataset/145/distribution/145.3/download/indice-precios-al-consumidor-nivel-general-base-diciembre-2016-mensual.csv"
-    ports:
-      - "6060:8000"
+    expose:
+      - "8000"
     volumes:
       - ./config:/app/config
     restart: unless-stopped
