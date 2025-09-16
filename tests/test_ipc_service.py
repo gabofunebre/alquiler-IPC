@@ -101,14 +101,14 @@ class LeerCsvTests(unittest.TestCase):
         self.assertTrue(status["used_cache"])
         self.assertFalse(status["stale"])
 
-    def test_refresh_triggered_after_15th_when_cache_is_behind(self):
+    def test_refresh_triggered_on_15th_when_previous_month_missing(self):
         csv_content = "fecha,valor\n2024-02-01,1.50\n"
         self._write_cache(csv_content)
 
         original_is_cache_stale = ipc_service._is_cache_stale
 
         def fake_is_cache_stale(latest_month, *, today=None):
-            return original_is_cache_stale(latest_month, today=date(2024, 4, 16))
+            return original_is_cache_stale(latest_month, today=date(2024, 4, 15))
 
         with mock.patch.object(ipc_service, "_is_cache_stale", fake_is_cache_stale):
             with mock.patch.object(
@@ -143,6 +143,18 @@ class LeerCsvTests(unittest.TestCase):
         self.assertEqual(rows, [["2024-02-01", "1.50"]])
         self.assertTrue(status["used_cache"])
         self.assertFalse(status["stale"])
+
+
+class CacheFreshnessRuleTests(unittest.TestCase):
+    def test_is_cache_stale_on_15th_without_previous_month(self):
+        self.assertTrue(
+            ipc_service._is_cache_stale("2024-02", today=date(2024, 4, 15))
+        )
+
+    def test_is_cache_fresh_on_15th_with_previous_month(self):
+        self.assertFalse(
+            ipc_service._is_cache_stale("2024-03", today=date(2024, 4, 15))
+        )
 
 
 if __name__ == "__main__":

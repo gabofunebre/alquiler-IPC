@@ -65,7 +65,7 @@ def _is_cache_stale(latest_month: str | None, *, today: date | None = None) -> b
     elif isinstance(today, datetime):
         today = today.date()
 
-    months_back = 1 if today.day > 15 else 2
+    months_back = 1 if today.day >= 15 else 2
     total_months = today.year * 12 + (today.month - 1)
     required_total = total_months - months_back
     required_year, required_month_index = divmod(required_total, 12)
