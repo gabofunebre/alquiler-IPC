@@ -7,7 +7,7 @@ import time
 
 import requests
 from decimal import Decimal, InvalidOperation
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 
 from .config_service import CSV_URL
 
@@ -37,6 +37,41 @@ def _load_cache_rows() -> list[list[str]]:
     if not rows:
         raise RuntimeError("CSV vacío")
     return rows
+
+
+def _latest_cached_month(rows: list[list[str]]) -> str | None:
+    """Return the most recent IPC month found in cached rows."""
+
+    latest: str | None = None
+    for row in rows:
+        if not row:
+            continue
+        mes = parse_fechas(str(row[0]))
+        if not mes:
+            continue
+        if latest is None or mes > latest:
+            latest = mes
+    return latest
+
+
+def _is_cache_stale(latest_month: str | None, *, today: date | None = None) -> bool:
+    """Return True when cached data is older than allowed."""
+
+    if latest_month is None:
+        return True
+
+    if today is None:
+        today = datetime.now(timezone.utc).date()
+    elif isinstance(today, datetime):
+        today = today.date()
+
+    months_back = 1 if today.day > 15 else 2
+    total_months = today.year * 12 + (today.month - 1)
+    required_total = total_months - months_back
+    required_year, required_month_index = divmod(required_total, 12)
+    required_month = required_month_index + 1
+    required_month_str = f"{required_year:04d}-{required_month:02d}"
+    return latest_month < required_month_str
 
 
 def _read_meta() -> dict:
@@ -73,10 +108,19 @@ def leer_csv():
         "last_checked_at": None,
     }
 
-    if cache_exists and (cache_age is not None) and cache_age < CACHE_TTL:
+    cached_header: list[str] | None = None
+    cached_rows: list[list[str]] | None = None
+    cache_is_stale = False
+    if cache_exists:
         rows = _load_cache_rows()
-        status["used_cache"] = True
-        return rows[0], rows[1:], status
+        cached_header, cached_rows = rows[0], rows[1:]
+        latest_month = _latest_cached_month(cached_rows)
+        cache_is_stale = _is_cache_stale(latest_month)
+
+    if cache_exists and (cache_age is not None) and cache_age < CACHE_TTL:
+        if not cache_is_stale and cached_header is not None and cached_rows is not None:
+            status["used_cache"] = True
+            return cached_header, cached_rows, status
 
     headers = {}
     if meta.get("etag"):
@@ -88,10 +132,16 @@ def leer_csv():
         status["last_checked_at"] = datetime.now(timezone.utc)
         response = requests.get(CSV_URL, timeout=20, headers=headers or None)
         if response.status_code == 304 and cache_exists:
-            rows = _load_cache_rows()
+            if cached_header is None or cached_rows is None:
+                rows = _load_cache_rows()
+                cached_header, cached_rows = rows[0], rows[1:]
+                latest_month = _latest_cached_month(cached_rows)
+                cache_is_stale = _is_cache_stale(latest_month)
+            os.utime(CACHE_PATH, None)
+            status["last_cached_at"] = _cache_last_modified()
             status["used_cache"] = True
-            status["stale"] = False
-            return rows[0], rows[1:], status
+            status["stale"] = cache_is_stale
+            return cached_header, cached_rows, status
 
         response.raise_for_status()
         text = response.content.decode("utf-8")
@@ -126,16 +176,22 @@ def leer_csv():
                 "No se pudo actualizar el CSV del IPC: %s. Se utilizarán los datos cacheados.",
                 exc,
             )
-            rows = _load_cache_rows()
+            if cached_header is None or cached_rows is None:
+                rows = _load_cache_rows()
+                cached_header, cached_rows = rows[0], rows[1:]
+                latest_month = _latest_cached_month(cached_rows)
+                cache_is_stale = _is_cache_stale(latest_month)
             status.update(
                 {
                     "used_cache": True,
                     "updated": False,
-                    "stale": cache_age is not None and cache_age >= CACHE_TTL,
+                    "stale": cache_is_stale,
                     "error": str(exc),
                 }
             )
-            return rows[0], rows[1:], status
+            if cached_header is None or cached_rows is None:
+                raise
+            return cached_header, cached_rows, status
         raise
 
 def parse_fechas(f):
