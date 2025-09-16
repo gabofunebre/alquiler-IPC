@@ -79,6 +79,7 @@
         <tr><th>Mes</th><th>IPC</th><th>Ajuste</th><th>Valor</th></tr>
       </thead>
       <tbody>
+        {% if tabla %}
         {% for fila in tabla %}
           <tr class="periodo{{ fila.periodo % 2 }} offset{{ fila.offset % 2 }}">
             <td>{{ fila.mes }}</td>
@@ -87,8 +88,17 @@
             <td>{% if fila.valor is not none %}${{ '{:,.0f}'.format(fila.valor) }}{% endif %}{% if fila.provisorio is defined and fila.provisorio %} <span class="badge bg-warning text-dark">Provisorio</span>{% endif %}</td>
           </tr>
       {% endfor %}
+        {% else %}
+          <tr><td colspan="4" class="text-center">Sin datos disponibles</td></tr>
+        {% endif %}
       </tbody>
     </table>
+    {% elif tabla_error %}
+    <hr>
+    <div class="alert alert-danger mt-4">Error cargando IPC.</div>
+    {% elif not tiene_config %}
+    <hr>
+    <div class="alert alert-info mt-4">No hay datos de configuración. Completá el formulario para generarlos.</div>
     {% endif %}
   </div>
   <div id="overlay"><div class="spinner-border text-primary" role="status"></div></div>

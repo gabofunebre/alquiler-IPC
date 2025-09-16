@@ -13,11 +13,11 @@ from .config_service import CSV_URL
 
 
 CACHE_PATH = os.path.join("config", "ipc.csv")
+CACHE_METADATA_PATH = CACHE_PATH + ".meta"
 CACHE_TTL = 24 * 60 * 60  # 24 hours in seconds
 CACHE_META_PATH = os.path.join("config", "ipc.meta.json")
 
 logger = logging.getLogger(__name__)
-
 
 def _cache_last_modified() -> datetime | None:
     """Return the datetime of the cached CSV if it exists."""
@@ -137,7 +137,6 @@ def leer_csv():
             )
             return rows[0], rows[1:], status
         raise
-
 
 def parse_fechas(f):
     """Normalize CSV date format to YYYY-MM."""

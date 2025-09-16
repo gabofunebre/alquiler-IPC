@@ -10,6 +10,7 @@ from flask import (
     redirect,
     url_for,
     session,
+    current_app,
 )
 
 from services.config_service import (
@@ -25,7 +26,6 @@ from services.user_service import load_users, add_user, delete_user
 
 bp = Blueprint("app", __name__)
 logger = logging.getLogger(__name__)
-
 
 def _format_ipc_status(status: dict | None) -> dict | None:
     if not status:
@@ -144,6 +144,7 @@ def index():
         except Exception as exc:
             logger.exception("Error generando tabla de alquiler")
             tabla_error = "Error cargando IPC. Intentá nuevamente más tarde."
+
     return render_template(
         "index.html",
         tabla=tabla,
@@ -197,7 +198,17 @@ def admin():
                 save_config(config)
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                     return jsonify({"ok": True})
-            except Exception:
+            except (TypeError, ValueError) as exc:
+                current_app.logger.warning(
+                    "Error de validación al guardar la configuración", exc_info=exc
+                )
+                if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                    return jsonify({"ok": False}), 400
+                raise
+            except Exception as exc:
+                current_app.logger.exception(
+                    "Error inesperado al guardar la configuración", exc_info=exc
+                )
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                     return jsonify({"ok": False}), 500
                 raise
@@ -230,6 +241,8 @@ def admin():
             ipc_status=_format_ipc_status(ipc_status),
             fecha_hoy=date.today().strftime("%d-%m-%Y"),
             users=users,
+            tabla_error=tabla_error,
+            tiene_config=tiene_config,
         )
 
     error = None
