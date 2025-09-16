@@ -9,6 +9,7 @@ from flask import (
     redirect,
     url_for,
     session,
+    current_app,
 )
 
 from services.config_service import (
@@ -93,16 +94,47 @@ def index():
         return render_template("user_login.html", error=error)
 
     config = load_config()
-    tabla = []
-    try:
-        base = Decimal(config.get("alquiler_base"))
-        inicio = config.get("fecha_inicio_contrato", "")[:7]
-        periodo = int(config.get("periodo_actualizacion_meses") or 3)
-        meses = meses_hasta_fin_anio(inicio)
-        tabla = generar_tabla_alquiler(base, inicio, periodo, meses)
-    except Exception:
-        tabla = []
-    return render_template("index.html", tabla=tabla, fecha_hoy=date.today().strftime("%d-%m-%Y"))
+    tabla = None
+    tabla_error = False
+    alquiler_base_value = config.get("alquiler_base")
+    if isinstance(alquiler_base_value, str):
+        alquiler_base_raw = alquiler_base_value.strip()
+    elif alquiler_base_value is None:
+        alquiler_base_raw = ""
+    else:
+        alquiler_base_raw = str(alquiler_base_value).strip()
+    fecha_inicio_value = config.get("fecha_inicio_contrato")
+    if isinstance(fecha_inicio_value, str):
+        fecha_inicio_raw = fecha_inicio_value.strip()
+    elif fecha_inicio_value is None:
+        fecha_inicio_raw = ""
+    else:
+        fecha_inicio_raw = str(fecha_inicio_value).strip()
+    tiene_config = bool(alquiler_base_raw and fecha_inicio_raw)
+    if tiene_config:
+        try:
+            base = Decimal(alquiler_base_raw)
+            inicio = fecha_inicio_raw[:7]
+            periodo = int(config.get("periodo_actualizacion_meses") or 3)
+            meses = meses_hasta_fin_anio(inicio)
+            tabla = generar_tabla_alquiler(base, inicio, periodo, meses)
+        except (InvalidOperation, ValueError, TypeError) as exc:
+            tabla_error = True
+            current_app.logger.warning(
+                "Configuración inválida al generar tabla de alquiler", exc_info=exc
+            )
+        except Exception as exc:
+            tabla_error = True
+            current_app.logger.exception(
+                "Error inesperado al generar tabla de alquiler", exc_info=exc
+            )
+    return render_template(
+        "index.html",
+        tabla=tabla,
+        tabla_error=tabla_error,
+        tiene_config=tiene_config,
+        fecha_hoy=date.today().strftime("%d-%m-%Y"),
+    )
 
 
 @bp.get("/alquiler/tabla")
@@ -149,25 +181,62 @@ def admin():
                 save_config(config)
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                     return jsonify({"ok": True})
-            except Exception:
+            except (TypeError, ValueError) as exc:
+                current_app.logger.warning(
+                    "Error de validación al guardar la configuración", exc_info=exc
+                )
+                if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                    return jsonify({"ok": False}), 400
+                raise
+            except Exception as exc:
+                current_app.logger.exception(
+                    "Error inesperado al guardar la configuración", exc_info=exc
+                )
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                     return jsonify({"ok": False}), 500
                 raise
-        tabla = []
-        try:
-            base = Decimal(config.get("alquiler_base"))
-            inicio = config.get("fecha_inicio_contrato", "")[:7]
-            periodo = int(config.get("periodo_actualizacion_meses") or 3)
-            meses = meses_hasta_fin_anio(inicio)
-            tabla = generar_tabla_alquiler(base, inicio, periodo, meses)
-        except Exception:
-            tabla = []
+        tabla = None
+        tabla_error = False
+        alquiler_base_value = config.get("alquiler_base")
+        if isinstance(alquiler_base_value, str):
+            alquiler_base_raw = alquiler_base_value.strip()
+        elif alquiler_base_value is None:
+            alquiler_base_raw = ""
+        else:
+            alquiler_base_raw = str(alquiler_base_value).strip()
+        fecha_inicio_value = config.get("fecha_inicio_contrato")
+        if isinstance(fecha_inicio_value, str):
+            fecha_inicio_raw = fecha_inicio_value.strip()
+        elif fecha_inicio_value is None:
+            fecha_inicio_raw = ""
+        else:
+            fecha_inicio_raw = str(fecha_inicio_value).strip()
+        tiene_config = bool(alquiler_base_raw and fecha_inicio_raw)
+        if tiene_config:
+            try:
+                base = Decimal(alquiler_base_raw)
+                inicio = fecha_inicio_raw[:7]
+                periodo = int(config.get("periodo_actualizacion_meses") or 3)
+                meses = meses_hasta_fin_anio(inicio)
+                tabla = generar_tabla_alquiler(base, inicio, periodo, meses)
+            except (InvalidOperation, ValueError, TypeError) as exc:
+                tabla_error = True
+                current_app.logger.warning(
+                    "Configuración inválida al generar tabla de alquiler", exc_info=exc
+                )
+            except Exception as exc:
+                tabla_error = True
+                current_app.logger.exception(
+                    "Error inesperado al generar tabla de alquiler", exc_info=exc
+                )
         return render_template(
             "config.html",
             config=config,
             tabla=tabla,
             fecha_hoy=date.today().strftime("%d-%m-%Y"),
             users=users,
+            tabla_error=tabla_error,
+            tiene_config=tiene_config,
         )
 
     error = None
