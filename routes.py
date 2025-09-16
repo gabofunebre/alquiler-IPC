@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from flask import (
@@ -24,6 +25,51 @@ from services.alquiler_service import generar_tabla_alquiler, meses_hasta_fin_an
 from services.user_service import load_users, add_user, delete_user
 
 bp = Blueprint("app", __name__)
+logger = logging.getLogger(__name__)
+
+
+def _generar_tabla_desde_config(config):
+    """Generar la tabla de alquiler a partir de la configuración guardada."""
+    tabla = []
+    tabla_error = False
+
+    base_raw = config.get("alquiler_base")
+    if isinstance(base_raw, str):
+        base_raw = base_raw.strip()
+
+    inicio_raw = config.get("fecha_inicio_contrato")
+    if isinstance(inicio_raw, str):
+        inicio_raw = inicio_raw.strip()
+    elif inicio_raw is None:
+        inicio_raw = ""
+    else:
+        inicio_raw = str(inicio_raw)
+
+    periodo_raw = config.get("periodo_actualizacion_meses")
+    if isinstance(periodo_raw, str):
+        periodo_raw = periodo_raw.strip()
+
+    if (base_raw not in (None, "")) and inicio_raw:
+        try:
+            base = Decimal(base_raw)
+            inicio = inicio_raw[:7]
+            periodo = int(periodo_raw or 3)
+            if periodo <= 0:
+                raise ValueError("periodo_actualizacion_meses debe ser positivo")
+            meses = meses_hasta_fin_anio(inicio)
+        except (InvalidOperation, ValueError, TypeError) as exc:
+            tabla_error = True
+            logger.warning(
+                "No se pudo interpretar la configuración para generar la tabla: %s", exc
+            )
+        else:
+            try:
+                tabla = generar_tabla_alquiler(base, inicio, periodo, meses)
+            except Exception:
+                logger.exception("Error inesperado generando la tabla de alquiler")
+                raise
+
+    return tabla, tabla_error
 
 
 @bp.get("/health")
@@ -128,6 +174,7 @@ def index():
             current_app.logger.exception(
                 "Error inesperado al generar tabla de alquiler", exc_info=exc
             )
+
     return render_template(
         "index.html",
         tabla=tabla,
@@ -233,6 +280,7 @@ def admin():
             "config.html",
             config=config,
             tabla=tabla,
+            tabla_error=tabla_error,
             fecha_hoy=date.today().strftime("%d-%m-%Y"),
             users=users,
             tabla_error=tabla_error,
