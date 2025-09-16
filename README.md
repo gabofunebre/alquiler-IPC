@@ -27,7 +27,7 @@ docker run -d --name ipc-api -p 8000:8000 ipc-api
 
 ## Configuración
 Variables de entorno admitidas:
-- `CSV_URL`: URL del CSV a usar (por defecto la oficial del INDEC).
+- `CSV_URL`: URL del CSV a usar (por defecto la oficial del INDEC). También se admite la variable legacy `CSV_DATOS`.
 - `ADMIN_USER` y `ADMIN_PASS`: credenciales para `/adm` (por defecto `admin`/`admin`).
 - `SECRET_KEY`: clave de sesión de Flask.
 
