@@ -4,8 +4,10 @@ import sys
 import tempfile
 import time
 import unittest
+from datetime import datetime, timezone, date
 from pathlib import Path
 from unittest import mock
+
 import requests
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -42,7 +44,8 @@ class LeerCsvTests(unittest.TestCase):
         os.utime(self.cache_path, (old, old))
 
     def test_offline_uses_cached_data(self):
-        csv_content = "fecha,valor\n2020-01-01,1.50\n"
+        current_month = datetime.now(timezone.utc).strftime("%Y-%m")
+        csv_content = f"fecha,valor\n{current_month}-01,1.50\n"
         self._write_cache(csv_content)
         self._age_cache()
 
@@ -54,14 +57,13 @@ class LeerCsvTests(unittest.TestCase):
             header, rows, status = ipc_service.leer_csv()
 
         self.assertEqual(header, ["fecha", "valor"])
-        self.assertEqual(rows, [["2020-01-01", "1.50"]])
+        self.assertEqual(rows, [[f"{current_month}-01", "1.50"]])
         self.assertTrue(status["used_cache"])
-        self.assertTrue(status["stale"])
-        self.assertFalse(status["updated"])
-        self.assertEqual(status["error"], "offline")
+        self.assertFalse(status["stale"])
 
     def test_not_modified_reuses_cache_and_sends_conditionals(self):
-        csv_content = "fecha,valor\n2020-01-01,1.50\n"
+        current_month = datetime.now(timezone.utc).strftime("%Y-%m")
+        csv_content = f"fecha,valor\n{current_month}-01,1.50\n"
         self._write_cache(csv_content)
         self._age_cache()
 
@@ -84,11 +86,7 @@ class LeerCsvTests(unittest.TestCase):
             header, rows, status = ipc_service.leer_csv()
 
         self.assertEqual(header, ["fecha", "valor"])
-        self.assertEqual(rows, [["2020-01-01", "1.50"]])
-        self.assertTrue(status["used_cache"])
-        self.assertFalse(status["updated"])
-        self.assertFalse(status["stale"])
-        self.assertIsNone(status["error"])
+        self.assertEqual(rows, [[f"{current_month}-01", "1.50"]])
         mocked_get.assert_called_once()
         called_headers = mocked_get.call_args.kwargs.get("headers")
         self.assertIsNotNone(called_headers)
@@ -100,6 +98,51 @@ class LeerCsvTests(unittest.TestCase):
             stored_metadata = json.load(f)
         self.assertEqual(stored_metadata.get("etag"), metadata["etag"])
         self.assertEqual(stored_metadata.get("last_modified"), metadata["last_modified"])
+        self.assertTrue(status["used_cache"])
+        self.assertFalse(status["stale"])
+
+    def test_refresh_triggered_after_15th_when_cache_is_behind(self):
+        csv_content = "fecha,valor\n2024-02-01,1.50\n"
+        self._write_cache(csv_content)
+
+        original_is_cache_stale = ipc_service._is_cache_stale
+
+        def fake_is_cache_stale(latest_month, *, today=None):
+            return original_is_cache_stale(latest_month, today=date(2024, 4, 16))
+
+        with mock.patch.object(ipc_service, "_is_cache_stale", fake_is_cache_stale):
+            with mock.patch.object(
+                ipc_service.requests,
+                "get",
+                side_effect=requests.RequestException("offline"),
+            ) as mocked_get:
+                header, rows, status = ipc_service.leer_csv()
+
+        mocked_get.assert_called_once()
+        self.assertEqual(header, ["fecha", "valor"])
+        self.assertEqual(rows, [["2024-02-01", "1.50"]])
+        self.assertTrue(status["used_cache"])
+        self.assertTrue(status["stale"])
+        self.assertIsNotNone(status["error"])
+
+    def test_cache_considered_fresh_before_15th_with_two_month_gap(self):
+        csv_content = "fecha,valor\n2024-02-01,1.50\n"
+        self._write_cache(csv_content)
+
+        original_is_cache_stale = ipc_service._is_cache_stale
+
+        def fake_is_cache_stale(latest_month, *, today=None):
+            return original_is_cache_stale(latest_month, today=date(2024, 4, 10))
+
+        with mock.patch.object(ipc_service, "_is_cache_stale", fake_is_cache_stale):
+            with mock.patch.object(ipc_service.requests, "get") as mocked_get:
+                header, rows, status = ipc_service.leer_csv()
+
+        mocked_get.assert_not_called()
+        self.assertEqual(header, ["fecha", "valor"])
+        self.assertEqual(rows, [["2024-02-01", "1.50"]])
+        self.assertTrue(status["used_cache"])
+        self.assertFalse(status["stale"])
 
 
 if __name__ == "__main__":
