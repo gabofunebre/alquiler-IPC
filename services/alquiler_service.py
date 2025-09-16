@@ -28,16 +28,26 @@ def add_months(ym: str, m: int) -> str:
 
 
 def meses_hasta_fin_anio(mes_inicio: str) -> int:
-    """Return number of months from mes_inicio up to December of current year."""
+    """Return number of months from ``mes_inicio`` up to December of the relevant year."""
     inicio_dt = datetime.strptime(mes_inicio, "%Y-%m")
-    fin_dt = datetime(date.today().year, 12, 1)
-    return (fin_dt.year - inicio_dt.year) * 12 + (fin_dt.month - inicio_dt.month) + 1
+    hoy = date.today()
+    # Si el contrato empieza en el futuro usamos ese mismo año como límite para
+    # generar al menos un período completo. De otro modo nos quedaríamos sin
+    # filas y la tabla parecería vacía aunque la configuración exista.
+    fin_year = max(inicio_dt.year, hoy.year)
+    fin_dt = datetime(fin_year, 12, 1)
+    meses = (fin_dt.year - inicio_dt.year) * 12 + (fin_dt.month - inicio_dt.month) + 1
+    return max(meses, 0)
 
 
 def generar_tabla_alquiler(
-    alquiler_base: Decimal, mes_inicio: str, periodo: int, meses: int | None = None
+    alquiler_base: Decimal,
+    mes_inicio: str,
+    periodo: int,
+    meses: int | None = None,
+    ipc_data: dict[str, Decimal] | None = None,
 ):
-    ipc = ipc_dict()
+    ipc = ipc_data if ipc_data is not None else ipc_dict()
     hoy_ym = date.today().strftime("%Y-%m")
     max_ym = add_months(hoy_ym, 1)
     if meses is None:

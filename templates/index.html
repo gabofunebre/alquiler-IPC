@@ -21,8 +21,20 @@
     </div>
   </nav>
   <div class="container">
+    {% if tabla_error %}
+    <div class="alert alert-danger" role="alert">{{ tabla_error }}</div>
+    {% endif %}
     {% if tabla %}
+    {% if ipc_status and ipc_status.error %}
+    <div class="alert alert-warning" role="alert">
+      No se pudo actualizar el IPC. Se muestran los datos guardados del
+      {% if ipc_status.last_cached_at_text %}{{ ipc_status.last_cached_at_text }}{% else %}archivo en caché{% endif %}.
+    </div>
+    {% endif %}
     <div class="text-end mb-2">Fecha de hoy: {{ fecha_hoy }}</div>
+    {% if ipc_status and ipc_status.last_cached_at_text %}
+    <div class="text-end text-muted mb-2">Última actualización del IPC: {{ ipc_status.last_cached_at_text }}</div>
+    {% endif %}
     <table class="table table-bordered">
       <thead>
         <tr><th>Mes</th><th>IPC</th><th>Ajuste</th><th>Valor</th></tr>
@@ -38,7 +50,7 @@
         {% endfor %}
       </tbody>
     </table>
-    {% else %}
+    {% elif not tabla_error %}
     <div class="alert alert-info">No hay datos de configuración. Ingresá a <a href="{{ url_for('app.admin') }}">/adm</a> para cargarlos.</div>
     {% endif %}
   </div>

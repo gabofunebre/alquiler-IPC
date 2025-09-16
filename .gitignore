@@ -1,4 +1,5 @@
 .env
 config/config.json
 config/users.json
+config/ipc.meta.json
 __pycache__/

@@ -1,4 +1,5 @@
-from datetime import date
+import logging
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from flask import (
     Blueprint,
@@ -18,11 +19,23 @@ from services.config_service import (
     ADMIN_PASS,
     CSV_URL,
 )
-from services.ipc_service import leer_csv, parse_fechas
+from services.ipc_service import leer_csv, parse_fechas, ipc_dict_with_status
 from services.alquiler_service import generar_tabla_alquiler, meses_hasta_fin_anio
 from services.user_service import load_users, add_user, delete_user
 
 bp = Blueprint("app", __name__)
+logger = logging.getLogger(__name__)
+
+
+def _format_ipc_status(status: dict | None) -> dict | None:
+    if not status:
+        return None
+    formatted = status.copy()
+    for key in ("last_cached_at", "last_checked_at"):
+        value = formatted.get(key)
+        if isinstance(value, datetime):
+            formatted[f"{key}_text"] = value.astimezone().strftime("%d-%m-%Y %H:%M %Z")
+    return formatted
 
 
 @bp.get("/health")
@@ -45,7 +58,7 @@ def ipc_ultimos():
     except ValueError:
         abort(400, "Parámetro n inválido")
 
-    _, filas = leer_csv()
+    _, filas, status = leer_csv()
 
     out = []
     prev_indice_dec = None
@@ -75,7 +88,26 @@ def ipc_ultimos():
     out.sort(key=lambda d: d["mes"])
     out = out[-n:]
     last_date = out[-1]["mes"] if out else None
-    return jsonify({"source": CSV_URL, "last_month": last_date, "count": len(out), "data": out})
+    cache_info = {
+        "last_cached_at": status["last_cached_at"].isoformat()
+        if status.get("last_cached_at")
+        else None,
+        "used_cache": status.get("used_cache"),
+        "updated": status.get("updated"),
+        "stale": status.get("stale"),
+        "error": status.get("error"),
+    }
+    if status.get("last_checked_at"):
+        cache_info["last_checked_at"] = status["last_checked_at"].isoformat()
+    return jsonify(
+        {
+            "source": CSV_URL,
+            "last_month": last_date,
+            "count": len(out),
+            "data": out,
+            "cache": cache_info,
+        }
+    )
 
 
 @bp.route("/", methods=["GET", "POST"])
@@ -94,15 +126,31 @@ def index():
 
     config = load_config()
     tabla = []
-    try:
-        base = Decimal(config.get("alquiler_base"))
-        inicio = config.get("fecha_inicio_contrato", "")[:7]
-        periodo = int(config.get("periodo_actualizacion_meses") or 3)
-        meses = meses_hasta_fin_anio(inicio)
-        tabla = generar_tabla_alquiler(base, inicio, periodo, meses)
-    except Exception:
-        tabla = []
-    return render_template("index.html", tabla=tabla, fecha_hoy=date.today().strftime("%d-%m-%Y"))
+    tabla_error = None
+    ipc_status = None
+    base_raw = config.get("alquiler_base")
+    inicio_raw = config.get("fecha_inicio_contrato", "")
+    if base_raw and inicio_raw:
+        try:
+            base = Decimal(base_raw)
+            inicio = inicio_raw[:7]
+            periodo = int(config.get("periodo_actualizacion_meses") or 3)
+            meses = meses_hasta_fin_anio(inicio)
+            ipc_data, ipc_status = ipc_dict_with_status()
+            tabla = generar_tabla_alquiler(base, inicio, periodo, meses, ipc_data=ipc_data)
+        except (InvalidOperation, ValueError) as exc:
+            tabla_error = "Configuración inválida. Verificá los datos cargados."
+            logger.warning("Configuración inválida para generar tabla de alquiler: %s", exc)
+        except Exception as exc:
+            logger.exception("Error generando tabla de alquiler")
+            tabla_error = "Error cargando IPC. Intentá nuevamente más tarde."
+    return render_template(
+        "index.html",
+        tabla=tabla,
+        tabla_error=tabla_error,
+        ipc_status=_format_ipc_status(ipc_status),
+        fecha_hoy=date.today().strftime("%d-%m-%Y"),
+    )
 
 
 @bp.get("/alquiler/tabla")
@@ -154,18 +202,32 @@ def admin():
                     return jsonify({"ok": False}), 500
                 raise
         tabla = []
-        try:
-            base = Decimal(config.get("alquiler_base"))
-            inicio = config.get("fecha_inicio_contrato", "")[:7]
-            periodo = int(config.get("periodo_actualizacion_meses") or 3)
-            meses = meses_hasta_fin_anio(inicio)
-            tabla = generar_tabla_alquiler(base, inicio, periodo, meses)
-        except Exception:
-            tabla = []
+        tabla_error = None
+        ipc_status = None
+        base_raw = config.get("alquiler_base")
+        inicio_raw = config.get("fecha_inicio_contrato", "")
+        if base_raw and inicio_raw:
+            try:
+                base = Decimal(base_raw)
+                inicio = inicio_raw[:7]
+                periodo = int(config.get("periodo_actualizacion_meses") or 3)
+                meses = meses_hasta_fin_anio(inicio)
+                ipc_data, ipc_status = ipc_dict_with_status()
+                tabla = generar_tabla_alquiler(
+                    base, inicio, periodo, meses, ipc_data=ipc_data
+                )
+            except (InvalidOperation, ValueError) as exc:
+                tabla_error = "Configuración inválida. Revisá los datos ingresados."
+                logger.warning("Configuración inválida en /adm: %s", exc)
+            except Exception as exc:
+                logger.exception("Error generando tabla de alquiler en /adm")
+                tabla_error = "Error cargando IPC. Intentá nuevamente más tarde."
         return render_template(
             "config.html",
             config=config,
             tabla=tabla,
+            tabla_error=tabla_error,
+            ipc_status=_format_ipc_status(ipc_status),
             fecha_hoy=date.today().strftime("%d-%m-%Y"),
             users=users,
         )
