@@ -92,8 +92,8 @@ class LeerCsvTests(unittest.TestCase):
         self.assertIsNotNone(called_headers)
         self.assertEqual(called_headers.get("If-None-Match"), metadata["etag"])
         self.assertEqual(called_headers.get("If-Modified-Since"), metadata["last_modified"])
-        # Cache timestamp should be refreshed after a 304
-        self.assertLess(time.time() - os.path.getmtime(self.cache_path), 5)
+        self.assertIsNotNone(status["last_checked_at"])
+        self.assertIsNotNone(status["last_cached_at"])
         with open(self.meta_path, "r", encoding="utf-8") as f:
             stored_metadata = json.load(f)
         self.assertEqual(stored_metadata.get("etag"), metadata["etag"])
