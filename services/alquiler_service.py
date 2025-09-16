@@ -41,9 +41,13 @@ def meses_hasta_fin_anio(mes_inicio: str) -> int:
 
 
 def generar_tabla_alquiler(
-    alquiler_base: Decimal, mes_inicio: str, periodo: int, meses: int | None = None
+    alquiler_base: Decimal,
+    mes_inicio: str,
+    periodo: int,
+    meses: int | None = None,
+    ipc_data: dict[str, Decimal] | None = None,
 ):
-    ipc = ipc_dict()
+    ipc = ipc_data if ipc_data is not None else ipc_dict()
     hoy_ym = date.today().strftime("%Y-%m")
     max_ym = add_months(hoy_ym, 1)
     if meses is None:

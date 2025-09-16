@@ -1,5 +1,5 @@
 import logging
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from flask import (
     Blueprint,
@@ -20,56 +20,22 @@ from services.config_service import (
     ADMIN_PASS,
     CSV_URL,
 )
-from services.ipc_service import leer_csv, parse_fechas
+from services.ipc_service import leer_csv, parse_fechas, ipc_dict_with_status
 from services.alquiler_service import generar_tabla_alquiler, meses_hasta_fin_anio
 from services.user_service import load_users, add_user, delete_user
 
 bp = Blueprint("app", __name__)
 logger = logging.getLogger(__name__)
 
-
-def _generar_tabla_desde_config(config):
-    """Generar la tabla de alquiler a partir de la configuración guardada."""
-    tabla = []
-    tabla_error = False
-
-    base_raw = config.get("alquiler_base")
-    if isinstance(base_raw, str):
-        base_raw = base_raw.strip()
-
-    inicio_raw = config.get("fecha_inicio_contrato")
-    if isinstance(inicio_raw, str):
-        inicio_raw = inicio_raw.strip()
-    elif inicio_raw is None:
-        inicio_raw = ""
-    else:
-        inicio_raw = str(inicio_raw)
-
-    periodo_raw = config.get("periodo_actualizacion_meses")
-    if isinstance(periodo_raw, str):
-        periodo_raw = periodo_raw.strip()
-
-    if (base_raw not in (None, "")) and inicio_raw:
-        try:
-            base = Decimal(base_raw)
-            inicio = inicio_raw[:7]
-            periodo = int(periodo_raw or 3)
-            if periodo <= 0:
-                raise ValueError("periodo_actualizacion_meses debe ser positivo")
-            meses = meses_hasta_fin_anio(inicio)
-        except (InvalidOperation, ValueError, TypeError) as exc:
-            tabla_error = True
-            logger.warning(
-                "No se pudo interpretar la configuración para generar la tabla: %s", exc
-            )
-        else:
-            try:
-                tabla = generar_tabla_alquiler(base, inicio, periodo, meses)
-            except Exception:
-                logger.exception("Error inesperado generando la tabla de alquiler")
-                raise
-
-    return tabla, tabla_error
+def _format_ipc_status(status: dict | None) -> dict | None:
+    if not status:
+        return None
+    formatted = status.copy()
+    for key in ("last_cached_at", "last_checked_at"):
+        value = formatted.get(key)
+        if isinstance(value, datetime):
+            formatted[f"{key}_text"] = value.astimezone().strftime("%d-%m-%Y %H:%M %Z")
+    return formatted
 
 
 @bp.get("/health")
@@ -92,7 +58,7 @@ def ipc_ultimos():
     except ValueError:
         abort(400, "Parámetro n inválido")
 
-    _, filas = leer_csv()
+    _, filas, status = leer_csv()
 
     out = []
     prev_indice_dec = None
@@ -122,7 +88,26 @@ def ipc_ultimos():
     out.sort(key=lambda d: d["mes"])
     out = out[-n:]
     last_date = out[-1]["mes"] if out else None
-    return jsonify({"source": CSV_URL, "last_month": last_date, "count": len(out), "data": out})
+    cache_info = {
+        "last_cached_at": status["last_cached_at"].isoformat()
+        if status.get("last_cached_at")
+        else None,
+        "used_cache": status.get("used_cache"),
+        "updated": status.get("updated"),
+        "stale": status.get("stale"),
+        "error": status.get("error"),
+    }
+    if status.get("last_checked_at"):
+        cache_info["last_checked_at"] = status["last_checked_at"].isoformat()
+    return jsonify(
+        {
+            "source": CSV_URL,
+            "last_month": last_date,
+            "count": len(out),
+            "data": out,
+            "cache": cache_info,
+        }
+    )
 
 
 @bp.route("/", methods=["GET", "POST"])
@@ -140,46 +125,31 @@ def index():
         return render_template("user_login.html", error=error)
 
     config = load_config()
-    tabla = None
-    tabla_error = False
-    alquiler_base_value = config.get("alquiler_base")
-    if isinstance(alquiler_base_value, str):
-        alquiler_base_raw = alquiler_base_value.strip()
-    elif alquiler_base_value is None:
-        alquiler_base_raw = ""
-    else:
-        alquiler_base_raw = str(alquiler_base_value).strip()
-    fecha_inicio_value = config.get("fecha_inicio_contrato")
-    if isinstance(fecha_inicio_value, str):
-        fecha_inicio_raw = fecha_inicio_value.strip()
-    elif fecha_inicio_value is None:
-        fecha_inicio_raw = ""
-    else:
-        fecha_inicio_raw = str(fecha_inicio_value).strip()
-    tiene_config = bool(alquiler_base_raw and fecha_inicio_raw)
-    if tiene_config:
+    tabla = []
+    tabla_error = None
+    ipc_status = None
+    base_raw = config.get("alquiler_base")
+    inicio_raw = config.get("fecha_inicio_contrato", "")
+    if base_raw and inicio_raw:
         try:
-            base = Decimal(alquiler_base_raw)
-            inicio = fecha_inicio_raw[:7]
+            base = Decimal(base_raw)
+            inicio = inicio_raw[:7]
             periodo = int(config.get("periodo_actualizacion_meses") or 3)
             meses = meses_hasta_fin_anio(inicio)
-            tabla = generar_tabla_alquiler(base, inicio, periodo, meses)
-        except (InvalidOperation, ValueError, TypeError) as exc:
-            tabla_error = True
-            current_app.logger.warning(
-                "Configuración inválida al generar tabla de alquiler", exc_info=exc
-            )
+            ipc_data, ipc_status = ipc_dict_with_status()
+            tabla = generar_tabla_alquiler(base, inicio, periodo, meses, ipc_data=ipc_data)
+        except (InvalidOperation, ValueError) as exc:
+            tabla_error = "Configuración inválida. Verificá los datos cargados."
+            logger.warning("Configuración inválida para generar tabla de alquiler: %s", exc)
         except Exception as exc:
-            tabla_error = True
-            current_app.logger.exception(
-                "Error inesperado al generar tabla de alquiler", exc_info=exc
-            )
+            logger.exception("Error generando tabla de alquiler")
+            tabla_error = "Error cargando IPC. Intentá nuevamente más tarde."
 
     return render_template(
         "index.html",
         tabla=tabla,
         tabla_error=tabla_error,
-        tiene_config=tiene_config,
+        ipc_status=_format_ipc_status(ipc_status),
         fecha_hoy=date.today().strftime("%d-%m-%Y"),
     )
 
@@ -242,45 +212,33 @@ def admin():
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                     return jsonify({"ok": False}), 500
                 raise
-        tabla = None
-        tabla_error = False
-        alquiler_base_value = config.get("alquiler_base")
-        if isinstance(alquiler_base_value, str):
-            alquiler_base_raw = alquiler_base_value.strip()
-        elif alquiler_base_value is None:
-            alquiler_base_raw = ""
-        else:
-            alquiler_base_raw = str(alquiler_base_value).strip()
-        fecha_inicio_value = config.get("fecha_inicio_contrato")
-        if isinstance(fecha_inicio_value, str):
-            fecha_inicio_raw = fecha_inicio_value.strip()
-        elif fecha_inicio_value is None:
-            fecha_inicio_raw = ""
-        else:
-            fecha_inicio_raw = str(fecha_inicio_value).strip()
-        tiene_config = bool(alquiler_base_raw and fecha_inicio_raw)
-        if tiene_config:
+        tabla = []
+        tabla_error = None
+        ipc_status = None
+        base_raw = config.get("alquiler_base")
+        inicio_raw = config.get("fecha_inicio_contrato", "")
+        if base_raw and inicio_raw:
             try:
-                base = Decimal(alquiler_base_raw)
-                inicio = fecha_inicio_raw[:7]
+                base = Decimal(base_raw)
+                inicio = inicio_raw[:7]
                 periodo = int(config.get("periodo_actualizacion_meses") or 3)
                 meses = meses_hasta_fin_anio(inicio)
-                tabla = generar_tabla_alquiler(base, inicio, periodo, meses)
-            except (InvalidOperation, ValueError, TypeError) as exc:
-                tabla_error = True
-                current_app.logger.warning(
-                    "Configuración inválida al generar tabla de alquiler", exc_info=exc
+                ipc_data, ipc_status = ipc_dict_with_status()
+                tabla = generar_tabla_alquiler(
+                    base, inicio, periodo, meses, ipc_data=ipc_data
                 )
+            except (InvalidOperation, ValueError) as exc:
+                tabla_error = "Configuración inválida. Revisá los datos ingresados."
+                logger.warning("Configuración inválida en /adm: %s", exc)
             except Exception as exc:
-                tabla_error = True
-                current_app.logger.exception(
-                    "Error inesperado al generar tabla de alquiler", exc_info=exc
-                )
+                logger.exception("Error generando tabla de alquiler en /adm")
+                tabla_error = "Error cargando IPC. Intentá nuevamente más tarde."
         return render_template(
             "config.html",
             config=config,
             tabla=tabla,
             tabla_error=tabla_error,
+            ipc_status=_format_ipc_status(ipc_status),
             fecha_hoy=date.today().strftime("%d-%m-%Y"),
             users=users,
             tabla_error=tabla_error,

@@ -58,10 +58,22 @@
       </div>
       <button type="submit" class="btn btn-primary">Guardar</button>
     </form>
-    {% if tabla is not none %}
+    {% if tabla_error %}
+    <div class="alert alert-danger mt-3" role="alert">{{ tabla_error }}</div>
+    {% endif %}
+    {% if tabla %}
     <hr>
     <h2 class="h5 mt-4">Tabla de alquiler</h2>
     <div class="text-end mb-2">Fecha de hoy: {{ fecha_hoy }}</div>
+    {% if ipc_status and ipc_status.last_cached_at_text %}
+    <div class="text-end text-muted mb-2">Última actualización del IPC: {{ ipc_status.last_cached_at_text }}</div>
+    {% endif %}
+    {% if ipc_status and ipc_status.error %}
+    <div class="alert alert-warning" role="alert">
+      No se pudo actualizar el IPC. Se muestran los datos guardados del
+      {% if ipc_status.last_cached_at_text %}{{ ipc_status.last_cached_at_text }}{% else %}archivo en caché{% endif %}.
+    </div>
+    {% endif %}
     <table class="table table-bordered">
       <thead>
         <tr><th>Mes</th><th>IPC</th><th>Ajuste</th><th>Valor</th></tr>
