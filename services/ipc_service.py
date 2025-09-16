@@ -13,6 +13,16 @@ CACHE_PATH = os.path.join("config", "ipc.csv")
 CACHE_METADATA_PATH = CACHE_PATH + ".meta"
 CACHE_TTL = 24 * 60 * 60  # 24 hours in seconds
 
+logger = logging.getLogger(__name__)
+
+
+def _read_cached_csv(path):
+    with open(path, "r", encoding="utf-8") as f:
+        rows = list(csv.reader(f))
+    if not rows:
+        raise RuntimeError("CSV vacío")
+    return rows[0], rows[1:]
+
 
 def _read_cached_rows():
     with open(CACHE_PATH, "r", encoding="utf-8") as f:

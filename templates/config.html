@@ -74,9 +74,13 @@
             <td>{% if fila.ajuste is not none %}${{ '{:,.0f}'.format(fila.ajuste) }}{% endif %}</td>
             <td>{% if fila.valor is not none %}${{ '{:,.0f}'.format(fila.valor) }}{% endif %}{% if fila.provisorio is defined and fila.provisorio %} <span class="badge bg-warning text-dark">Provisorio</span>{% endif %}</td>
           </tr>
-      {% endfor %}
+        {% endfor %}
       </tbody>
     </table>
+    {% elif tabla_error %}
+    <hr>
+    <h2 class="h5 mt-4">Tabla de alquiler</h2>
+    <div class="alert alert-danger mt-3">Error cargando IPC. Intentalo nuevamente más tarde.</div>
     {% endif %}
   </div>
   <div id="overlay"><div class="spinner-border text-primary" role="status"></div></div>
