@@ -217,7 +217,8 @@ def admin():
         ipc_status = None
         base_raw = config.get("alquiler_base")
         inicio_raw = config.get("fecha_inicio_contrato", "")
-        if base_raw and inicio_raw:
+        tiene_config = bool(base_raw and inicio_raw)
+        if tiene_config: 
             try:
                 base = Decimal(base_raw)
                 inicio = inicio_raw[:7]

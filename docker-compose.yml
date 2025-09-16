@@ -10,8 +10,8 @@ services:
       - ./config:/app/config
     restart: unless-stopped
     networks:
-      - nginx_net
+      - cloudflared_net
 
 networks:
-  nginx_net:
+  cloudflared_net:
     external: true
