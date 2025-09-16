@@ -241,7 +241,6 @@ def admin():
             ipc_status=_format_ipc_status(ipc_status),
             fecha_hoy=date.today().strftime("%d-%m-%Y"),
             users=users,
-            tabla_error=tabla_error,
             tiene_config=tiene_config,
         )
 
