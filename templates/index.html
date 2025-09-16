@@ -38,6 +38,8 @@
         {% endfor %}
       </tbody>
     </table>
+    {% elif tabla_error %}
+    <div class="alert alert-danger">Error cargando IPC. Intentalo nuevamente más tarde.</div>
     {% else %}
     <div class="alert alert-info">No hay datos de configuración. Ingresá a <a href="{{ url_for('app.admin') }}">/adm</a> para cargarlos.</div>
     {% endif %}
