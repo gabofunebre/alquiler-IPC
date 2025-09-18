@@ -10,7 +10,7 @@ DEFAULT_CSV_URL = os.getenv(
     "CSV_URL",
     os.getenv(
         "CSV_DATOS",
-        "https://infra.datos.gob.ar/catalog/sspm/dataset/145/distribution/145.3/download/indice-precios-al-consumidor-nivel-general-base-diciembre-2016-mensual.csv",
+        "https://apis.datos.gob.ar/series/api/series?ids=145.3_INGNACUAL_DICI_M_38&format=json&start_date=2016-01&limit=1000",
     ),
 )
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")

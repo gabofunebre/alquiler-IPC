@@ -1,6 +1,6 @@
 # Mini API IPC Argentina
 
-Servicio en **Flask** que expone la variación mensual del **IPC nacional** y calcula ajustes de alquiler trimestre a trimestre. Los datos se toman del CSV oficial del INDEC (dataset 145.3).
+Servicio en **Flask** que expone la variación mensual del **IPC nacional** y calcula ajustes de alquiler trimestre a trimestre. Los datos se toman de la API de series del INDEC (dataset 145.3).
 
 ## Endpoints
 - `GET /health`: chequeo simple.
@@ -27,7 +27,7 @@ docker run -d --name ipc-api -p 8000:8000 ipc-api
 
 ## Configuración
 Variables de entorno admitidas:
-- `CSV_URL`: URL del CSV a usar (por defecto la oficial del INDEC). También se admite la variable legacy `CSV_DATOS`.
+- `CSV_URL`: URL de la API de IPC a usar (por defecto la oficial del INDEC). También se admite la variable legacy `CSV_DATOS`.
 - `ADMIN_USER` y `ADMIN_PASS`: credenciales para `/adm` (por defecto `admin`/`admin`).
 - `SECRET_KEY`: clave de sesión de Flask.
 

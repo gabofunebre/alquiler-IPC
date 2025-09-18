@@ -5,6 +5,7 @@ import tempfile
 import time
 import unittest
 from datetime import datetime, timezone, date
+from decimal import Decimal
 from pathlib import Path
 from unittest import mock
 
@@ -22,26 +23,24 @@ class LeerCsvTests(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmpdir.cleanup)
-        self.cache_path = os.path.join(self.tmpdir.name, "ipc.csv")
-        self.meta_path = self.cache_path + ".meta"
+        self.cache_path = os.path.join(self.tmpdir.name, "ipc.json")
+        self.meta_path = os.path.join(self.tmpdir.name, "ipc.meta.json")
         self.config_path = os.path.join(self.tmpdir.name, "config.json")
 
         cache_patch = mock.patch.object(ipc_service, "CACHE_PATH", self.cache_path)
-        meta_patch = mock.patch.object(ipc_service, "CACHE_METADATA_PATH", self.meta_path)
         meta_json_patch = mock.patch.object(ipc_service, "CACHE_META_PATH", self.meta_path)
         config_patch = mock.patch("services.config_service.CONFIG_FILE", self.config_path)
         self.addCleanup(cache_patch.stop)
-        self.addCleanup(meta_patch.stop)
         self.addCleanup(meta_json_patch.stop)
         self.addCleanup(config_patch.stop)
         cache_patch.start()
-        meta_patch.start()
         meta_json_patch.start()
         config_patch.start()
 
-    def _write_cache(self, content):
+    def _write_cache(self, rows):
+        payload = {"header": ["fecha", "variacion_mensual"], "rows": rows}
         with open(self.cache_path, "w", encoding="utf-8") as f:
-            f.write(content)
+            json.dump(payload, f)
 
     def _age_cache(self):
         old = time.time() - (ipc_service.CACHE_TTL + 10)
@@ -49,8 +48,8 @@ class LeerCsvTests(unittest.TestCase):
 
     def test_offline_uses_cached_data(self):
         current_month = datetime.now(timezone.utc).strftime("%Y-%m")
-        csv_content = f"fecha,valor\n{current_month}-01,1.50\n"
-        self._write_cache(csv_content)
+        rows = [[f"{current_month}-01", "1.50"]]
+        self._write_cache(rows)
         self._age_cache()
 
         with mock.patch.object(
@@ -60,15 +59,15 @@ class LeerCsvTests(unittest.TestCase):
         ):
             header, rows, status = ipc_service.leer_csv()
 
-        self.assertEqual(header, ["fecha", "valor"])
+        self.assertEqual(header, ["fecha", "variacion_mensual"])
         self.assertEqual(rows, [[f"{current_month}-01", "1.50"]])
         self.assertTrue(status["used_cache"])
         self.assertFalse(status["stale"])
 
     def test_not_modified_reuses_cache_and_sends_conditionals(self):
         current_month = datetime.now(timezone.utc).strftime("%Y-%m")
-        csv_content = f"fecha,valor\n{current_month}-01,1.50\n"
-        self._write_cache(csv_content)
+        rows = [[f"{current_month}-01", "1.50"]]
+        self._write_cache(rows)
         self._age_cache()
 
         metadata = {
@@ -89,7 +88,7 @@ class LeerCsvTests(unittest.TestCase):
         with mock.patch.object(ipc_service.requests, "get", return_value=response) as mocked_get:
             header, rows, status = ipc_service.leer_csv()
 
-        self.assertEqual(header, ["fecha", "valor"])
+        self.assertEqual(header, ["fecha", "variacion_mensual"])
         self.assertEqual(rows, [[f"{current_month}-01", "1.50"]])
         mocked_get.assert_called_once()
         called_headers = mocked_get.call_args.kwargs.get("headers")
@@ -106,8 +105,8 @@ class LeerCsvTests(unittest.TestCase):
         self.assertFalse(status["stale"])
 
     def test_refresh_triggered_on_15th_when_previous_month_missing(self):
-        csv_content = "fecha,valor\n2024-02-01,1.50\n"
-        self._write_cache(csv_content)
+        rows = [["2024-02-01", "1.50"]]
+        self._write_cache(rows)
 
         original_is_cache_stale = ipc_service._is_cache_stale
 
@@ -123,15 +122,15 @@ class LeerCsvTests(unittest.TestCase):
                 header, rows, status = ipc_service.leer_csv()
 
         mocked_get.assert_called_once()
-        self.assertEqual(header, ["fecha", "valor"])
+        self.assertEqual(header, ["fecha", "variacion_mensual"])
         self.assertEqual(rows, [["2024-02-01", "1.50"]])
         self.assertTrue(status["used_cache"])
         self.assertTrue(status["stale"])
         self.assertIsNotNone(status["error"])
 
     def test_cache_considered_fresh_before_15th_with_two_month_gap(self):
-        csv_content = "fecha,valor\n2024-02-01,1.50\n"
-        self._write_cache(csv_content)
+        rows = [["2024-02-01", "1.50"]]
+        self._write_cache(rows)
 
         original_is_cache_stale = ipc_service._is_cache_stale
 
@@ -143,7 +142,7 @@ class LeerCsvTests(unittest.TestCase):
                 header, rows, status = ipc_service.leer_csv()
 
         mocked_get.assert_not_called()
-        self.assertEqual(header, ["fecha", "valor"])
+        self.assertEqual(header, ["fecha", "variacion_mensual"])
         self.assertEqual(rows, [["2024-02-01", "1.50"]])
         self.assertTrue(status["used_cache"])
         self.assertFalse(status["stale"])
@@ -155,9 +154,9 @@ class LeerCsvTests(unittest.TestCase):
 
         response = mock.Mock()
         response.status_code = 200
-        response.content = "fecha,valor\n2024-05-01,1.50\n".encode("utf-8")
         response.headers = {}
         response.raise_for_status = mock.Mock()
+        response.json.return_value = {"data": [["2024-05-01", 1.50]]}
 
         with mock.patch.object(ipc_service.requests, "get", return_value=response) as mocked_get:
             header, rows, status = ipc_service.leer_csv()
@@ -165,9 +164,27 @@ class LeerCsvTests(unittest.TestCase):
         mocked_get.assert_called_once()
         called_url = mocked_get.call_args.args[0]
         self.assertEqual(called_url, custom_url)
-        self.assertEqual(header, ["fecha", "valor"])
-        self.assertEqual(rows, [["2024-05-01", "1.50"]])
+        self.assertEqual(header, ["fecha", "variacion_mensual"])
+        self.assertEqual(rows, [["2024-05-01", "1.5"]])
         self.assertEqual(status["source"], custom_url)
+
+    def test_invalid_api_response_uses_cache(self):
+        rows = [["2024-05-01", "1.50"]]
+        self._write_cache(rows)
+        self._age_cache()
+
+        response = mock.Mock()
+        response.status_code = 200
+        response.raise_for_status = mock.Mock()
+        response.json.side_effect = ValueError("invalid json")
+
+        with mock.patch.object(ipc_service.requests, "get", return_value=response):
+            header, cached_rows, status = ipc_service.leer_csv()
+
+        self.assertEqual(header, ["fecha", "variacion_mensual"])
+        self.assertEqual(cached_rows, rows)
+        self.assertTrue(status["used_cache"])
+        self.assertIsNotNone(status["error"])
 
     def test_get_csv_cache_status_without_cache(self):
         info = ipc_service.get_csv_cache_status()
@@ -179,8 +196,8 @@ class LeerCsvTests(unittest.TestCase):
 
     def test_get_csv_cache_status_with_cache(self):
         timestamp = datetime(2024, 5, 10, 12, 30, tzinfo=timezone.utc)
-        csv_content = "fecha,valor\n2024-05-01,1.50\n"
-        self._write_cache(csv_content)
+        rows = [["2024-05-01", "1.50"]]
+        self._write_cache(rows)
         os.utime(self.cache_path, (timestamp.timestamp(), timestamp.timestamp()))
         meta = {"fetched_at": "2024-05-09T10:00:00+00:00"}
         with open(self.meta_path, "w", encoding="utf-8") as fh:
@@ -207,6 +224,15 @@ class CacheFreshnessRuleTests(unittest.TestCase):
             ipc_service._is_cache_stale("2024-03", today=date(2024, 4, 15))
         )
 
+
+class ParsingTests(unittest.TestCase):
+    def test_rows_to_variations_from_api_data(self):
+        rows = [["2024-05-01", "0.015"], ["2024-06-01", "0.016"]]
+        parsed = ipc_service._rows_to_monthly_variations(rows)
+        self.assertIn("2024-05", parsed)
+        self.assertEqual(parsed["2024-05"], Decimal("0.015"))
+        self.assertIn("2024-06", parsed)
+        self.assertEqual(parsed["2024-06"], Decimal("0.016"))
 
 if __name__ == "__main__":
     unittest.main()

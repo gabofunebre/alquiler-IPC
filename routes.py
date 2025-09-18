@@ -21,8 +21,6 @@ from services.config_service import (
     get_csv_url,
 )
 from services.ipc_service import (
-    leer_csv,
-    parse_fechas,
     ipc_dict_with_status,
     get_csv_cache_status,
 )
@@ -60,7 +58,7 @@ def ipc_ultimos():
     Devuelve los últimos N meses (por defecto 12) con:
       - mes: "YYYY-MM"
       - ipc_mensual: porcentaje mensual en número con 1 decimal (ej: 1.6)
-    Fuente: CSV 145.3 (IPC nacional, nivel general, mensual)
+    Fuente: API de series 145.3 (IPC nacional, nivel general, mensual)
     """
     try:
         n = int(request.args.get("n", "12"))
@@ -69,34 +67,16 @@ def ipc_ultimos():
     except ValueError:
         abort(400, "Parámetro n inválido")
 
-    _, filas, status = leer_csv()
+    ipc_data, status = ipc_dict_with_status()
 
     out = []
-    prev_indice_dec = None
-    for row in filas:
-        if len(row) < 2:
-            continue
-        mes = parse_fechas(row[0])
-        try:
-            indice_dec = Decimal(row[1])
-        except (ValueError, InvalidOperation):
-            continue
-        ipc_prop_dec = None
-        if len(row) >= 9 and row[8] not in ("", None, ""):
-            try:
-                ipc_prop_dec = Decimal(row[8])
-            except (ValueError, InvalidOperation):
-                ipc_prop_dec = None
-        if ipc_prop_dec is None and prev_indice_dec is not None and prev_indice_dec > 0:
-            ipc_prop_dec = (indice_dec / prev_indice_dec) - Decimal("1")
-        if ipc_prop_dec is not None:
-            ipc_pct_1dec = (
-                ipc_prop_dec * Decimal("100")
-            ).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
-            out.append({"mes": mes, "ipc_mensual": float(ipc_pct_1dec)})
-        prev_indice_dec = indice_dec
+    for mes in sorted(ipc_data.keys()):
+        ipc_prop_dec = ipc_data[mes]
+        ipc_pct_1dec = (
+            ipc_prop_dec * Decimal("100")
+        ).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        out.append({"mes": mes, "ipc_mensual": float(ipc_pct_1dec)})
 
-    out.sort(key=lambda d: d["mes"])
     out = out[-n:]
     last_date = out[-1]["mes"] if out else None
     cache_info = {
