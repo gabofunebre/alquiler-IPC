@@ -1,7 +1,8 @@
 import json
 import os
+import unicodedata
 from copy import deepcopy
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
 
 USERS_FILE = os.path.join(os.path.dirname(__file__), "..", "config", "users.json")
 
@@ -27,6 +28,42 @@ def _normalize_username(name: str | None) -> str:
     if not name:
         return ""
     return str(name).strip().lower()
+
+
+def _normalize_lookup_value(value: Any) -> str:
+    if not value:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKD", text)
+    stripped = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return stripped.casefold()
+
+
+def _iter_name_candidates(config: Dict[str, Any]) -> Iterable[str]:
+    nombre = _normalize_lookup_value(config.get("nombre"))
+    apellido = _normalize_lookup_value(config.get("apellido"))
+    seen: set[str] = set()
+    if nombre:
+        seen.add(nombre)
+        yield nombre
+    if nombre or apellido:
+        full_raw = " ".join(
+            part
+            for part in (
+                str(config.get("nombre") or "").strip(),
+                str(config.get("apellido") or "").strip(),
+            )
+            if part
+        )
+        full = _normalize_lookup_value(full_raw)
+        if full and full not in seen:
+            seen.add(full)
+            yield full
+    if apellido and apellido not in seen:
+        seen.add(apellido)
+        yield apellido
 
 
 def _default_user_config() -> Dict[str, Any]:
@@ -122,6 +159,24 @@ def list_users() -> list[str]:
     """Return the list of registered users sorted alphabetically."""
 
     return sorted(load_users().keys())
+
+
+def find_user_by_name(name: str | None) -> str | None:
+    """Find a user matching the given name (case and accent insensitive)."""
+
+    target = _normalize_lookup_value(name)
+    if not target:
+        return None
+    users = load_users()
+    for username in users.keys():
+        if _normalize_lookup_value(username) == target:
+            return username
+    for username in sorted(users.keys()):
+        config = users.get(username, {})
+        for candidate in _iter_name_candidates(config):
+            if candidate == target:
+                return username
+    return None
 
 
 def add_user(name: str) -> str | None:

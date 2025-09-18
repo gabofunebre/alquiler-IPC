@@ -26,7 +26,7 @@ from services.ipc_service import (
 )
 from services.alquiler_service import generar_tabla_alquiler, meses_hasta_fin_anio
 from services.user_service import (
-    list_users,
+    find_user_by_name,
     add_user,
     delete_user,
     get_user_config,
@@ -107,10 +107,11 @@ def index():
     if not session.get("user"):
         error = None
         if request.method == "POST":
-            nombre = request.form.get("name", "").strip().lower()
-            if nombre and nombre in list_users():
+            nombre = request.form.get("name", "")
+            username = find_user_by_name(nombre)
+            if username:
                 session.clear()
-                session["user"] = nombre
+                session["user"] = username
                 session.permanent = False  # expira al cerrar el navegador
                 return redirect(url_for("app.index"))
             error = "Usuario no encontrado"
