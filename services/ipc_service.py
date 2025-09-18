@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import time
 
 import requests
 from decimal import Decimal, InvalidOperation
@@ -12,7 +11,6 @@ from . import config_service
 
 
 CACHE_PATH = os.path.join("config", "ipc.json")
-CACHE_TTL = 24 * 60 * 60  # 24 hours in seconds
 CACHE_META_PATH = os.path.join("config", "ipc.meta.json")
 
 logger = logging.getLogger(__name__)
@@ -82,10 +80,37 @@ def _latest_cached_month(rows: list[list[str]]) -> str | None:
     return latest
 
 
+def _shift_month(year: int, month: int, delta: int) -> tuple[int, int]:
+    total = year * 12 + (month - 1) + delta
+    shifted_year, shifted_month_index = divmod(total, 12)
+    return shifted_year, shifted_month_index + 1
+
+
+def _month_key(value: str | None) -> int | None:
+    if not value:
+        return None
+    try:
+        year_str, month_str = value.split("-", 1)
+        year = int(year_str)
+        month = int(month_str)
+    except (AttributeError, ValueError):
+        return None
+    if month < 1 or month > 12:
+        return None
+    return year * 12 + (month - 1)
+
+
+def _required_month_key(today: date) -> int:
+    delta = -1 if today.day >= 14 else -2
+    required_year, required_month = _shift_month(today.year, today.month, delta)
+    return required_year * 12 + (required_month - 1)
+
+
 def _is_cache_stale(latest_month: str | None, *, today: date | None = None) -> bool:
     """Return True when cached data is older than allowed."""
 
-    if latest_month is None:
+    latest_key = _month_key(latest_month)
+    if latest_key is None:
         return True
 
     if today is None:
@@ -93,13 +118,8 @@ def _is_cache_stale(latest_month: str | None, *, today: date | None = None) -> b
     elif isinstance(today, datetime):
         today = today.date()
 
-    months_back = 1 if today.day >= 15 else 2
-    total_months = today.year * 12 + (today.month - 1)
-    required_total = total_months - months_back
-    required_year, required_month_index = divmod(required_total, 12)
-    required_month = required_month_index + 1
-    required_month_str = f"{required_year:04d}-{required_month:02d}"
-    return latest_month < required_month_str
+    required_key = _required_month_key(today)
+    return latest_key < required_key
 
 
 def _read_meta() -> dict:
@@ -189,9 +209,6 @@ def leer_csv():
     csv_url = config_service.get_csv_url()
     meta = _read_meta()
     cache_exists = os.path.exists(CACHE_PATH)
-    cache_age = None
-    if cache_exists:
-        cache_age = time.time() - os.path.getmtime(CACHE_PATH)
 
     status = {
         "source": csv_url,
@@ -212,11 +229,11 @@ def leer_csv():
         cached_header, cached_rows = _load_cache_rows()
         latest_month = _latest_cached_month(cached_rows)
         cache_is_stale = _is_cache_stale(latest_month)
+        status["stale"] = cache_is_stale
 
-    if cache_exists and (cache_age is not None) and cache_age < CACHE_TTL:
-        if not cache_is_stale and cached_header is not None and cached_rows is not None:
-            status["used_cache"] = True
-            return cached_header, cached_rows, status
+    if cache_exists and not cache_is_stale and cached_header is not None and cached_rows is not None:
+        status["used_cache"] = True
+        return cached_header, cached_rows, status
 
     headers = {}
     if meta.get("etag"):
@@ -246,11 +263,13 @@ def leer_csv():
         header, rows = _parse_api_payload(payload)
         _store_cache(header, rows)
         fetched_at = datetime.now(timezone.utc)
+        latest_month = _latest_cached_month(rows)
+        cache_is_stale = _is_cache_stale(latest_month)
         status.update(
             {
                 "used_cache": False,
                 "updated": True,
-                "stale": False,
+                "stale": cache_is_stale,
                 "last_cached_at": fetched_at,
                 "etag": response.headers.get("ETag"),
                 "last_modified_header": response.headers.get("Last-Modified"),

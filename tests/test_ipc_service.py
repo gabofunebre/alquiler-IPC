@@ -43,7 +43,7 @@ class LeerCsvTests(unittest.TestCase):
             json.dump(payload, f)
 
     def _age_cache(self):
-        old = time.time() - (ipc_service.CACHE_TTL + 10)
+        old = time.time() - (24 * 60 * 60 + 10)
         os.utime(self.cache_path, (old, old))
 
     def test_offline_uses_cached_data(self):
@@ -65,8 +65,7 @@ class LeerCsvTests(unittest.TestCase):
         self.assertFalse(status["stale"])
 
     def test_not_modified_reuses_cache_and_sends_conditionals(self):
-        current_month = datetime.now(timezone.utc).strftime("%Y-%m")
-        rows = [[f"{current_month}-01", "1.50"]]
+        rows = [["2024-02-01", "1.50"]]
         self._write_cache(rows)
         self._age_cache()
 
@@ -85,11 +84,17 @@ class LeerCsvTests(unittest.TestCase):
         }
         response.raise_for_status.side_effect = AssertionError("304 should not raise")
 
-        with mock.patch.object(ipc_service.requests, "get", return_value=response) as mocked_get:
-            header, rows, status = ipc_service.leer_csv()
+        original_is_cache_stale = ipc_service._is_cache_stale
+
+        def fake_is_cache_stale(latest_month, *, today=None):
+            return original_is_cache_stale(latest_month, today=date(2024, 4, 14))
+
+        with mock.patch.object(ipc_service, "_is_cache_stale", fake_is_cache_stale):
+            with mock.patch.object(ipc_service.requests, "get", return_value=response) as mocked_get:
+                header, rows, status = ipc_service.leer_csv()
 
         self.assertEqual(header, ["fecha", "variacion_mensual"])
-        self.assertEqual(rows, [[f"{current_month}-01", "1.50"]])
+        self.assertEqual(rows, [["2024-02-01", "1.50"]])
         mocked_get.assert_called_once()
         called_headers = mocked_get.call_args.kwargs.get("headers")
         self.assertIsNotNone(called_headers)
@@ -102,16 +107,16 @@ class LeerCsvTests(unittest.TestCase):
         self.assertEqual(stored_metadata.get("etag"), metadata["etag"])
         self.assertEqual(stored_metadata.get("last_modified"), metadata["last_modified"])
         self.assertTrue(status["used_cache"])
-        self.assertFalse(status["stale"])
+        self.assertTrue(status["stale"])
 
-    def test_refresh_triggered_on_15th_when_previous_month_missing(self):
+    def test_refresh_triggered_on_14th_when_previous_month_missing(self):
         rows = [["2024-02-01", "1.50"]]
         self._write_cache(rows)
 
         original_is_cache_stale = ipc_service._is_cache_stale
 
         def fake_is_cache_stale(latest_month, *, today=None):
-            return original_is_cache_stale(latest_month, today=date(2024, 4, 15))
+            return original_is_cache_stale(latest_month, today=date(2024, 4, 14))
 
         with mock.patch.object(ipc_service, "_is_cache_stale", fake_is_cache_stale):
             with mock.patch.object(
@@ -128,14 +133,14 @@ class LeerCsvTests(unittest.TestCase):
         self.assertTrue(status["stale"])
         self.assertIsNotNone(status["error"])
 
-    def test_cache_considered_fresh_before_15th_with_two_month_gap(self):
+    def test_cache_considered_fresh_before_14th_with_two_month_gap(self):
         rows = [["2024-02-01", "1.50"]]
         self._write_cache(rows)
 
         original_is_cache_stale = ipc_service._is_cache_stale
 
         def fake_is_cache_stale(latest_month, *, today=None):
-            return original_is_cache_stale(latest_month, today=date(2024, 4, 10))
+            return original_is_cache_stale(latest_month, today=date(2024, 4, 13))
 
         with mock.patch.object(ipc_service, "_is_cache_stale", fake_is_cache_stale):
             with mock.patch.object(ipc_service.requests, "get") as mocked_get:
@@ -214,14 +219,14 @@ class LeerCsvTests(unittest.TestCase):
 
 
 class CacheFreshnessRuleTests(unittest.TestCase):
-    def test_is_cache_stale_on_15th_without_previous_month(self):
+    def test_is_cache_stale_on_14th_without_previous_month(self):
         self.assertTrue(
-            ipc_service._is_cache_stale("2024-02", today=date(2024, 4, 15))
+            ipc_service._is_cache_stale("2024-02", today=date(2024, 4, 14))
         )
 
-    def test_is_cache_fresh_on_15th_with_previous_month(self):
+    def test_is_cache_fresh_on_14th_with_previous_month(self):
         self.assertFalse(
-            ipc_service._is_cache_stale("2024-03", today=date(2024, 4, 15))
+            ipc_service._is_cache_stale("2024-03", today=date(2024, 4, 14))
         )
 
 
