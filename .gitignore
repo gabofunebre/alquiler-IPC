@@ -2,4 +2,5 @@
 config/config.json
 config/users.json
 config/ipc.meta.json
+config/*
 __pycache__/
