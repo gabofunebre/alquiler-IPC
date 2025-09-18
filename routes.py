@@ -20,7 +20,12 @@ from services.config_service import (
     ADMIN_PASS,
     get_csv_url,
 )
-from services.ipc_service import leer_csv, parse_fechas, ipc_dict_with_status
+from services.ipc_service import (
+    leer_csv,
+    parse_fechas,
+    ipc_dict_with_status,
+    get_csv_cache_status,
+)
 from services.alquiler_service import generar_tabla_alquiler, meses_hasta_fin_anio
 from services.user_service import (
     list_users,
@@ -204,6 +209,15 @@ def admin():
     """Pantalla de login y configuración"""
     if session.get("logged_in"):
         global_config = load_config()
+        csv_url_configured = global_config.get("csv_url", "")
+        csv_url_current = get_csv_url()
+        csv_cache_info = get_csv_cache_status()
+        global_config_extras = {
+            key: value
+            for key, value in global_config.items()
+            if key not in {"csv_url"}
+        }
+
         users = list_users()
         selected_param = request.values.get("selected_user")
         if not selected_param:
@@ -223,6 +237,14 @@ def admin():
                         updated_config[key] = value
                     save_config(updated_config)
                     global_config = load_config()
+                    csv_url_configured = global_config.get("csv_url", "")
+                    csv_url_current = get_csv_url()
+                    csv_cache_info = get_csv_cache_status()
+                    global_config_extras = {
+                        key: value
+                        for key, value in global_config.items()
+                        if key not in {"csv_url"}
+                    }
                 else:
                     if not selected_user:
                         abort(400)
@@ -280,14 +302,19 @@ def admin():
         return render_template(
             "config.html",
             global_config=global_config,
+            global_config_extras=global_config_extras,
             user_config=user_config,
             tabla=tabla,
             tabla_error=tabla_error,
             ipc_status=_format_ipc_status(ipc_status),
             fecha_hoy=date.today().strftime("%d-%m-%Y"),
             users=users,
+            contratantes=users,
             selected_user=selected_user,
             tiene_config=tiene_config,
+            csv_url_configured=csv_url_configured,
+            csv_url_current=csv_url_current,
+            csv_cache_info=csv_cache_info,
         )
 
     error = None
@@ -311,6 +338,18 @@ def admin_add_user():
     nombre = request.form.get("new_user", "")
     nuevo = add_user(nombre)
     if nuevo:
+        save_user_config(
+            nuevo,
+            {
+                "alquiler_base": request.form.get("alquiler_base", ""),
+                "fecha_inicio_contrato": request.form.get(
+                    "fecha_inicio_contrato", ""
+                ),
+                "periodo_actualizacion_meses": request.form.get(
+                    "periodo_actualizacion_meses", ""
+                ),
+            },
+        )
         return redirect(url_for("app.admin", user=nuevo))
     return redirect(url_for("app.admin"))
 
