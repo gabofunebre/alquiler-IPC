@@ -6,10 +6,21 @@ from typing import Any, Dict
 USERS_FILE = os.path.join(os.path.dirname(__file__), "..", "config", "users.json")
 
 USER_CONFIG_KEYS = (
-    "alquiler_base",
+    "nombre",
+    "apellido",
+    "dni",
+    "direccion",
+    "telefono",
+    "mail",
     "fecha_inicio_contrato",
+    "valor_inicial_contrato",
     "periodo_actualizacion_meses",
+    "inmueble_locado",
 )
+
+LEGACY_KEY_MAP = {
+    "alquiler_base": "valor_inicial_contrato",
+}
 
 
 def _normalize_username(name: str | None) -> str:
@@ -27,9 +38,10 @@ def _sanitize_user_config(data: Any, *, base: Dict[str, Any] | None = None) -> D
     extras: Dict[str, Any] = {}
     if isinstance(data, dict):
         for key, value in data.items():
-            if key in base_config:
-                base_config[key] = "" if value is None else value
-            else:
+            target_key = LEGACY_KEY_MAP.get(key, key)
+            if target_key in base_config:
+                base_config[target_key] = "" if value is None else value
+            elif target_key == key:
                 extras[key] = value
     base_config.update(extras)
     return base_config

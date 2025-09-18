@@ -31,6 +31,7 @@ from services.user_service import (
     delete_user,
     get_user_config,
     save_user_config,
+    load_users,
 )
 
 bp = Blueprint("app", __name__)
@@ -119,7 +120,7 @@ def index():
     tabla = []
     tabla_error = None
     ipc_status = None
-    base_raw = user_config.get("alquiler_base")
+    base_raw = user_config.get("valor_inicial_contrato") or user_config.get("alquiler_base")
     inicio_raw = user_config.get("fecha_inicio_contrato", "")
     if base_raw and inicio_raw:
         try:
@@ -148,9 +149,11 @@ def index():
 @bp.get("/alquiler/tabla")
 def alquiler_tabla():
     user_config = get_user_config(session.get("user"))
-    base = request.args.get("alquiler_base")
+    base = request.args.get("valor_inicial_contrato")
     if base is None:
-        base = user_config.get("alquiler_base")
+        base = request.args.get("alquiler_base")
+    if base is None:
+        base = user_config.get("valor_inicial_contrato") or user_config.get("alquiler_base")
     inicio = request.args.get("fecha_inicio_contrato")
     if inicio is None:
         inicio = user_config.get("fecha_inicio_contrato", "")
@@ -178,7 +181,7 @@ def alquiler_tabla():
     try:
         base_dec = Decimal(base)
     except InvalidOperation:
-        abort(400, "alquiler_base inválido")
+        abort(400, "valor_inicial_contrato inválido")
 
     tabla = generar_tabla_alquiler(base_dec, inicio_mes, periodo, meses)
     return jsonify({"tabla": tabla})
@@ -198,7 +201,8 @@ def admin():
             if key not in {"api_url"}
         }
 
-        users = list_users()
+        users_data = load_users()
+        users = sorted(users_data.keys())
         selected_param = request.values.get("selected_user")
         if not selected_param:
             selected_param = request.args.get("user")
@@ -231,9 +235,16 @@ def admin():
                     save_user_config(
                         selected_user,
                         {
-                            "alquiler_base": request.form.get("alquiler_base", ""),
-                            "fecha_inicio_contrato": request.form.get("fecha_inicio_contrato", ""),
-                            "periodo_actualizacion_meses": request.form.get("periodo_actualizacion_meses", ""),
+                            "nombre": (request.form.get("nombre", "") or "").strip(),
+                            "apellido": (request.form.get("apellido", "") or "").strip(),
+                            "dni": (request.form.get("dni", "") or "").strip(),
+                            "direccion": (request.form.get("direccion", "") or "").strip(),
+                            "telefono": (request.form.get("telefono", "") or "").strip(),
+                            "mail": (request.form.get("mail", "") or "").strip(),
+                            "fecha_inicio_contrato": (request.form.get("fecha_inicio_contrato", "") or "").strip(),
+                            "valor_inicial_contrato": (request.form.get("valor_inicial_contrato", "") or "").strip(),
+                            "periodo_actualizacion_meses": (request.form.get("periodo_actualizacion_meses", "") or "").strip(),
+                            "inmueble_locado": (request.form.get("inmueble_locado", "") or "").strip(),
                         },
                     )
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -252,15 +263,39 @@ def admin():
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                     return jsonify({"ok": False}), 500
                 raise
-            users = list_users()
+            users_data = load_users()
+            users = sorted(users_data.keys())
             if selected_user not in users:
                 selected_user = users[0] if users else None
 
-        user_config = get_user_config(selected_user) if selected_user else get_user_config(None)
+        contratantes = []
+        contratantes_data: dict[str, dict] = {}
+
+        for username in users:
+            stored_config = dict(users_data.get(username, {}))
+            nombre = str(stored_config.get("nombre") or "").strip()
+            apellido = str(stored_config.get("apellido") or "").strip()
+            inmueble = str(stored_config.get("inmueble_locado") or "").strip()
+            label_parts = [part for part in (nombre, apellido) if part]
+            label = " ".join(label_parts) if label_parts else username
+            display = f"{label} - {inmueble}" if inmueble else label
+            info = {
+                "id": username,
+                "display": display,
+                "label": label,
+                "config": stored_config,
+            }
+            contratantes.append(info)
+            contratantes_data[username] = info
+
+        if selected_user and selected_user in users_data:
+            user_config = dict(users_data[selected_user])
+        else:
+            user_config = get_user_config(selected_user)
         tabla = []
         tabla_error = None
         ipc_status = None
-        base_raw = user_config.get("alquiler_base")
+        base_raw = user_config.get("valor_inicial_contrato") or user_config.get("alquiler_base")
         inicio_raw = user_config.get("fecha_inicio_contrato", "")
         tiene_config = bool(selected_user and base_raw and inicio_raw)
         if tiene_config:
@@ -289,7 +324,9 @@ def admin():
             ipc_status=_format_ipc_status(ipc_status),
             fecha_hoy=date.today().strftime("%d-%m-%Y"),
             users=users,
-            contratantes=users,
+            contratantes=contratantes,
+            contratantes_data=contratantes_data,
+            selected_contratante=contratantes_data.get(selected_user),
             selected_user=selected_user,
             tiene_config=tiene_config,
             api_url_configured=api_url_configured,
@@ -315,22 +352,42 @@ def admin():
 def admin_add_user():
     if not session.get("logged_in"):
         abort(403)
-    nombre = request.form.get("new_user", "")
-    nuevo = add_user(nombre)
+    nombre = (request.form.get("nombre", "") or "").strip()
+    apellido = (request.form.get("apellido", "") or "").strip()
+    identificador = (request.form.get("new_user") or "").strip()
+    if not identificador:
+        identificador = " ".join(part for part in (nombre, apellido) if part)
+    nuevo = add_user(identificador)
     if nuevo:
         save_user_config(
             nuevo,
             {
-                "alquiler_base": request.form.get("alquiler_base", ""),
-                "fecha_inicio_contrato": request.form.get(
+                "nombre": nombre,
+                "apellido": apellido,
+                "dni": (request.form.get("dni", "") or "").strip(),
+                "direccion": (request.form.get("direccion", "") or "").strip(),
+                "telefono": (request.form.get("telefono", "") or "").strip(),
+                "mail": (request.form.get("mail", "") or "").strip(),
+                "fecha_inicio_contrato": (request.form.get(
                     "fecha_inicio_contrato", ""
-                ),
-                "periodo_actualizacion_meses": request.form.get(
+                )
+                    or "").strip(),
+                "valor_inicial_contrato": (request.form.get(
+                    "valor_inicial_contrato", ""
+                )
+                    or "").strip(),
+                "periodo_actualizacion_meses": (request.form.get(
                     "periodo_actualizacion_meses", ""
-                ),
+                )
+                    or "").strip(),
+                "inmueble_locado": (request.form.get("inmueble_locado", "") or "").strip(),
             },
         )
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"ok": True, "user": nuevo})
         return redirect(url_for("app.admin", user=nuevo))
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": False}), 400
     return redirect(url_for("app.admin"))
 
 

@@ -5,7 +5,7 @@ Servicio en **Flask** que expone la variación mensual del **IPC nacional** y ca
 ## Endpoints
 - `GET /health`: chequeo simple.
 - `GET /ipc/ultimos?n=12`: últimos `n` meses de IPC mensual (por defecto 12).
-- `GET /alquiler/tabla`: genera la tabla de alquiler. Requiere `alquiler_base`, `fecha_inicio_contrato` y `periodo_actualizacion_meses`.
+- `GET /alquiler/tabla`: genera la tabla de alquiler. Requiere `valor_inicial_contrato` (alias `alquiler_base`), `fecha_inicio_contrato` y `periodo_actualizacion_meses`.
 - `GET /` y `/adm`: vistas HTML para ver y editar la configuración.
 
 ## Ejecución
