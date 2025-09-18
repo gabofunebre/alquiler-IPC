@@ -10,8 +10,10 @@ services:
       - ./config:/app/config
     restart: unless-stopped
     networks:
-      - cloudflared_net
+      Alquiler_tunn_net:
+        aliases: [alquiler-IPC]
 
 networks:
-  cloudflared_net:
+  Alquiler_tunn_net:
+    name: Alquiler_tunn_net
     external: true
