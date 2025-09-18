@@ -66,55 +66,72 @@
     <section class="mb-4">
       <div class="d-flex align-items-center mb-3">
         <h2 class="h5 mb-0">Contratantes</h2>
-        <button type="button" class="btn btn-primary ms-auto" data-bs-toggle="modal" data-bs-target="#addContratanteModal">
-          Agregar contratante
+        <button type="button" class="btn btn-success ms-auto" data-bs-toggle="modal" data-bs-target="#addContratanteModal">
+          Nuevo contratante
         </button>
       </div>
       {% if contratantes %}
-      <form id="user-select-form" class="row g-3 align-items-end mb-3" method="get">
-        <div class="col-sm-6 col-md-4">
+      <form id="user-select-form" class="row g-3 align-items-end mb-4" method="get">
+        <div class="col-sm-6 col-md-5">
           <label class="form-label" for="selected-user">Contratante</label>
           <select class="form-select" id="selected-user" name="user">
-            {% for u in contratantes %}
-            <option value="{{ u }}" {% if u == selected_user %}selected{% endif %}>{{ u }}</option>
+            {% for contratante in contratantes %}
+            <option value="{{ contratante.id }}" {% if contratante.id == selected_user %}selected{% endif %}>{{ contratante.display }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="col-auto">
+        <div class="col-auto d-flex flex-wrap gap-2 mt-4 mt-sm-0">
           <button type="submit" class="btn btn-secondary">Ver</button>
+          <button type="button" class="btn btn-primary" id="edit-contratante-btn" data-bs-toggle="modal" data-bs-target="#editContratanteModal" {% if not selected_user %}disabled{% endif %}>Editar</button>
+          <button type="button" class="btn btn-outline-danger" id="delete-contratante-btn" data-bs-toggle="modal" data-bs-target="#deleteContratanteModal" {% if not selected_user %}disabled{% endif %}>Eliminar</button>
         </div>
-      </form>
-      <form id="delete-user-form" class="mb-4 d-flex" action="{{ url_for('app.admin_delete_user') }}" method="post">
-        <input type="hidden" name="user" value="{{ selected_user or '' }}">
-        <button class="btn btn-outline-danger ms-auto" type="submit" {% if not selected_user %}disabled{% endif %}>Eliminar contratante</button>
-      </form>
-      {% if selected_user %}
-      <p class="text-muted">Editando configuración de <strong>{{ selected_user }}</strong>.</p>
-      {% endif %}
-      <form id="user-config-form" method="post" class="mb-4">
-        <input type="hidden" name="form_type" value="user">
-        <input type="hidden" name="selected_user" value="{{ selected_user or '' }}">
-        <div class="mb-3">
-          <label class="form-label">Alquiler base</label>
-          <input type="number" step="0.01" class="form-control" name="alquiler_base" value="{{ user_config.alquiler_base }}">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Fecha de inicio de contrato</label>
-          <input type="date" class="form-control" name="fecha_inicio_contrato" value="{{ user_config.fecha_inicio_contrato }}">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Período de actualización por IPC (meses)</label>
-          {% set periodo_sel = user_config.periodo_actualizacion_meses|default(3, true)|int %}
-          <select class="form-select" name="periodo_actualizacion_meses">
-            {% for n in range(1, 13) %}
-            <option value="{{ n }}" {% if periodo_sel == n %}selected{% endif %}>{{ n }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <button type="submit" class="btn btn-primary" {% if not selected_user %}disabled{% endif %}>Guardar contratante</button>
       </form>
       {% else %}
       <p class="text-muted mb-4">No hay contratantes cargados. Creá uno para configurar sus datos.</p>
+      {% endif %}
+      {% if selected_contratante %}
+      {% set cfg = selected_contratante.config %}
+      <div class="card mb-4">
+        <div class="card-header">Datos del contratante</div>
+        <div class="card-body">
+          <dl class="row mb-0">
+            <dt class="col-sm-4">Nombre</dt>
+            <dd class="col-sm-8">{{ cfg.nombre or '—' }}</dd>
+            <dt class="col-sm-4">Apellido</dt>
+            <dd class="col-sm-8">{{ cfg.apellido or '—' }}</dd>
+            <dt class="col-sm-4">DNI</dt>
+            <dd class="col-sm-8">{{ cfg.dni or '—' }}</dd>
+            <dt class="col-sm-4">Dirección</dt>
+            <dd class="col-sm-8">{{ cfg.direccion or '—' }}</dd>
+            <dt class="col-sm-4">Teléfono</dt>
+            <dd class="col-sm-8">
+              {% if cfg.telefono %}
+              <a href="tel:{{ cfg.telefono }}">{{ cfg.telefono }}</a>
+              {% else %}
+              &mdash;
+              {% endif %}
+            </dd>
+            <dt class="col-sm-4">Mail</dt>
+            <dd class="col-sm-8">
+              {% if cfg.mail %}
+              <a href="mailto:{{ cfg.mail }}">{{ cfg.mail }}</a>
+              {% else %}
+              &mdash;
+              {% endif %}
+            </dd>
+            <dt class="col-sm-4">Inmueble locado</dt>
+            <dd class="col-sm-8">{{ cfg.inmueble_locado or '—' }}</dd>
+            <dt class="col-sm-4">Fecha de inicio de contrato</dt>
+            <dd class="col-sm-8">{{ cfg.fecha_inicio_contrato or '—' }}</dd>
+            <dt class="col-sm-4">Valor inicial contrato</dt>
+            <dd class="col-sm-8">{{ cfg.valor_inicial_contrato or '—' }}</dd>
+            <dt class="col-sm-4">Período de actualización (meses)</dt>
+            <dd class="col-sm-8">{{ cfg.periodo_actualizacion_meses or '—' }}</dd>
+          </dl>
+        </div>
+      </div>
+      {% elif contratantes %}
+      <p class="text-muted mb-4">Seleccioná un contratante para ver sus datos.</p>
       {% endif %}
     </section>
 
@@ -123,7 +140,8 @@
     {% endif %}
     {% if tabla %}
     <hr>
-    <h2 class="h5 mt-4">Tabla de alquiler para {{ selected_user }}</h2>
+    {% set tabla_contratante = selected_contratante.label if selected_contratante else selected_user %}
+    <h2 class="h5 mt-4">Tabla de alquiler para {{ tabla_contratante }}</h2>
     <div class="text-end mb-2">Fecha de hoy: {{ fecha_hoy }}</div>
     {% if ipc_status and ipc_status.last_cached_at_text %}
     <div class="text-end text-muted mb-2">Última actualización del IPC: {{ ipc_status.last_cached_at_text }}</div>
@@ -155,7 +173,8 @@
     {% elif not tiene_config %}
     <hr>
     {% if selected_user %}
-    <div class="alert alert-info mt-4">No hay datos de configuración para {{ selected_user }}. Completá el formulario para generarlos.</div>
+    {% set mensaje_contratante = selected_contratante.label if selected_contratante else selected_user %}
+    <div class="alert alert-info mt-4">No hay datos de configuración para {{ mensaje_contratante }}. Completá el formulario para generarlos.</div>
     {% else %}
     <div class="alert alert-info mt-4">No hay contratantes configurados. Agregá uno para comenzar.</div>
     {% endif %}
@@ -163,37 +182,148 @@
   </div>
 
   <div class="modal fade" id="addContratanteModal" tabindex="-1" aria-labelledby="addContratanteModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
       <form id="add-contratante-form" class="modal-content" action="{{ url_for('app.admin_add_user') }}" method="post">
         <div class="modal-header">
           <h5 class="modal-title" id="addContratanteModalLabel">Nuevo contratante</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
         </div>
         <div class="modal-body">
-          <div class="mb-3">
-            <label class="form-label" for="new-user-name">Nombre del contratante</label>
-            <input type="text" class="form-control" id="new-user-name" name="new_user" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label" for="new-user-base">Alquiler base</label>
-            <input type="number" step="0.01" class="form-control" id="new-user-base" name="alquiler_base">
-          </div>
-          <div class="mb-3">
-            <label class="form-label" for="new-user-fecha">Fecha de inicio de contrato</label>
-            <input type="date" class="form-control" id="new-user-fecha" name="fecha_inicio_contrato">
-          </div>
-          <div class="mb-0">
-            <label class="form-label" for="new-user-periodo">Período de actualización por IPC (meses)</label>
-            <select class="form-select" id="new-user-periodo" name="periodo_actualizacion_meses">
-              {% for n in range(1, 13) %}
-              <option value="{{ n }}" {% if n == 3 %}selected{% endif %}>{{ n }}</option>
-              {% endfor %}
-            </select>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="add-nombre">Nombre del contratante</label>
+              <input type="text" class="form-control" id="add-nombre" name="nombre" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="add-apellido">Apellido</label>
+              <input type="text" class="form-control" id="add-apellido" name="apellido">
+            </div>
+            <div class="col-md-6 col-lg-4">
+              <label class="form-label" for="add-dni">DNI</label>
+              <input type="text" class="form-control" id="add-dni" name="dni">
+            </div>
+            <div class="col-md-6 col-lg-8">
+              <label class="form-label" for="add-direccion">Dirección</label>
+              <input type="text" class="form-control" id="add-direccion" name="direccion">
+            </div>
+            <div class="col-md-6 col-lg-4">
+              <label class="form-label" for="add-telefono">Teléfono</label>
+              <input type="text" class="form-control" id="add-telefono" name="telefono">
+            </div>
+            <div class="col-md-6 col-lg-4">
+              <label class="form-label" for="add-mail">Mail</label>
+              <input type="email" class="form-control" id="add-mail" name="mail">
+            </div>
+            <div class="col-12 col-lg-4">
+              <label class="form-label" for="add-inmueble">Inmueble locado</label>
+              <input type="text" class="form-control" id="add-inmueble" name="inmueble_locado">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="add-fecha-inicio">Fecha de inicio de contrato</label>
+              <input type="date" class="form-control" id="add-fecha-inicio" name="fecha_inicio_contrato">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="add-valor-inicial">Valor inicial contrato</label>
+              <input type="number" step="0.01" class="form-control" id="add-valor-inicial" name="valor_inicial_contrato">
+            </div>
+            <div class="col-md-6 col-lg-4">
+              <label class="form-label" for="add-periodo">Período de actualización por IPC (meses)</label>
+              <select class="form-select" id="add-periodo" name="periodo_actualizacion_meses">
+                {% for n in range(1, 13) %}
+                <option value="{{ n }}" {% if n == 3 %}selected{% endif %}>{{ n }}</option>
+                {% endfor %}
+              </select>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
           <button type="submit" class="btn btn-primary">Guardar contratante</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal fade" id="editContratanteModal" tabindex="-1" aria-labelledby="editContratanteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <form id="user-config-form" class="modal-content" action="{{ url_for('app.admin') }}" method="post">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editContratanteModalLabel">Editar contratante</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="form_type" value="user">
+          <input type="hidden" name="selected_user" value="{{ selected_user or '' }}" class="selected-user-input">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="edit-nombre">Nombre del contratante</label>
+              <input type="text" class="form-control" id="edit-nombre" name="nombre" value="{{ user_config.nombre|default('', true) }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="edit-apellido">Apellido</label>
+              <input type="text" class="form-control" id="edit-apellido" name="apellido" value="{{ user_config.apellido|default('', true) }}">
+            </div>
+            <div class="col-md-6 col-lg-4">
+              <label class="form-label" for="edit-dni">DNI</label>
+              <input type="text" class="form-control" id="edit-dni" name="dni" value="{{ user_config.dni|default('', true) }}">
+            </div>
+            <div class="col-md-6 col-lg-8">
+              <label class="form-label" for="edit-direccion">Dirección</label>
+              <input type="text" class="form-control" id="edit-direccion" name="direccion" value="{{ user_config.direccion|default('', true) }}">
+            </div>
+            <div class="col-md-6 col-lg-4">
+              <label class="form-label" for="edit-telefono">Teléfono</label>
+              <input type="text" class="form-control" id="edit-telefono" name="telefono" value="{{ user_config.telefono|default('', true) }}">
+            </div>
+            <div class="col-md-6 col-lg-4">
+              <label class="form-label" for="edit-mail">Mail</label>
+              <input type="email" class="form-control" id="edit-mail" name="mail" value="{{ user_config.mail|default('', true) }}">
+            </div>
+            <div class="col-12 col-lg-4">
+              <label class="form-label" for="edit-inmueble">Inmueble locado</label>
+              <input type="text" class="form-control" id="edit-inmueble" name="inmueble_locado" value="{{ user_config.inmueble_locado|default('', true) }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="edit-fecha-inicio">Fecha de inicio de contrato</label>
+              <input type="date" class="form-control" id="edit-fecha-inicio" name="fecha_inicio_contrato" value="{{ user_config.fecha_inicio_contrato|default('', true) }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="edit-valor-inicial">Valor inicial contrato</label>
+              <input type="number" step="0.01" class="form-control" id="edit-valor-inicial" name="valor_inicial_contrato" value="{{ user_config.valor_inicial_contrato|default('', true) }}">
+            </div>
+            <div class="col-md-6 col-lg-4">
+              <label class="form-label" for="edit-periodo">Período de actualización por IPC (meses)</label>
+              {% set periodo_sel = user_config.periodo_actualizacion_meses|default('3', true)|int %}
+              <select class="form-select" id="edit-periodo" name="periodo_actualizacion_meses">
+                {% for n in range(1, 13) %}
+                <option value="{{ n }}" {% if periodo_sel == n %}selected{% endif %}>{{ n }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" {% if not selected_user %}disabled{% endif %}>Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal fade" id="deleteContratanteModal" tabindex="-1" aria-labelledby="deleteContratanteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <form id="delete-user-form" class="modal-content" action="{{ url_for('app.admin_delete_user') }}" method="post">
+        <div class="modal-header">
+          <h5 class="modal-title" id="deleteContratanteModalLabel">Eliminar contratante</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <p id="delete-contratante-text" class="mb-0">¿Seguro que querés eliminar este contratante? Esta acción no se puede deshacer.</p>
+          <input type="hidden" name="user" value="{{ selected_user or '' }}" class="selected-user-input">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-danger">Eliminar</button>
         </div>
       </form>
     </div>
@@ -210,6 +340,15 @@
     let skipLogoutOnUnload = false;
     const overlay = document.getElementById('overlay');
     const alertPlaceholder = document.getElementById('alert-placeholder');
+    const contratantesData = {{ contratantes_data|default({}, true)|tojson }};
+    const select = document.getElementById('selected-user');
+    const editButton = document.getElementById('edit-contratante-btn');
+    const deleteButton = document.getElementById('delete-contratante-btn');
+    const selectedInputs = document.querySelectorAll('.selected-user-input');
+    const editModal = document.getElementById('editContratanteModal');
+    const addModal = document.getElementById('addContratanteModal');
+    const deleteModal = document.getElementById('deleteContratanteModal');
+    const deleteModalText = document.getElementById('delete-contratante-text');
 
     function showAlert(message, type) {
       const wrapper = document.createElement('div');
@@ -217,8 +356,119 @@
       alertPlaceholder.append(wrapper);
     }
 
-    if (addContratanteForm) {
-      addContratanteForm.addEventListener('submit', () => {
+    function updateSelectedUser(value) {
+      const current = value || '';
+      selectedInputs.forEach((input) => {
+        input.value = current;
+      });
+      if (editButton) {
+        editButton.disabled = !current;
+      }
+      if (deleteButton) {
+        deleteButton.disabled = !current;
+      }
+    }
+
+    if (select) {
+      updateSelectedUser(select.value);
+      select.addEventListener('change', () => {
+        updateSelectedUser(select.value);
+      });
+    } else {
+      updateSelectedUser('');
+    }
+
+    function attachAjaxForm(form, options = {}) {
+      if (!form) {
+        return;
+      }
+      const { url, successMessage, errorMessage, onSuccess } = options;
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        overlay.style.display = 'flex';
+        fetch(url || form.getAttribute('action') || '{{ url_for("app.admin") }}', {
+          method: form.getAttribute('method') || 'POST',
+          body: new FormData(form),
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        }).then((response) => {
+          if (!response.ok) {
+            throw new Error();
+          }
+          return response.json();
+        }).then((data) => {
+          overlay.style.display = 'none';
+          if (successMessage) {
+            showAlert(successMessage, 'success');
+          }
+          skipLogoutOnUnload = true;
+          if (onSuccess) {
+            onSuccess(data, form);
+          } else {
+            setTimeout(() => window.location.reload(), 500);
+          }
+        }).catch(() => {
+          overlay.style.display = 'none';
+          if (errorMessage) {
+            showAlert(errorMessage, 'danger');
+          }
+        });
+      });
+    }
+
+    attachAjaxForm(userForm, {
+      url: '{{ url_for("app.admin") }}',
+      successMessage: 'Datos del contratante guardados correctamente',
+      errorMessage: 'Error al guardar los datos del contratante',
+      onSuccess: () => {
+        if (editModal) {
+          const modalInstance = bootstrap.Modal.getInstance(editModal);
+          if (modalInstance) {
+            modalInstance.hide();
+          }
+        }
+        overlay.style.display = 'flex';
+        const currentId = select ? select.value : '';
+        setTimeout(() => {
+          const url = new URL(window.location.href);
+          if (currentId) {
+            url.searchParams.set('user', currentId);
+          }
+          window.location.href = url.toString();
+        }, 300);
+      }
+    });
+
+    attachAjaxForm(globalForm, {
+      url: '{{ url_for("app.admin") }}',
+      successMessage: 'Ajustes del sistema guardados correctamente',
+      errorMessage: 'Error al guardar los ajustes del sistema'
+    });
+
+    attachAjaxForm(addContratanteForm, {
+      url: '{{ url_for("app.admin_add_user") }}',
+      successMessage: 'Contratante creado correctamente',
+      errorMessage: 'Error al crear el contratante',
+      onSuccess: (data) => {
+        if (addModal) {
+          const modalInstance = bootstrap.Modal.getInstance(addModal);
+          if (modalInstance) {
+            modalInstance.hide();
+          }
+        }
+        overlay.style.display = 'flex';
+        const targetUser = data && data.user ? data.user : '';
+        setTimeout(() => {
+          const url = new URL(window.location.href);
+          if (targetUser) {
+            url.searchParams.set('user', targetUser);
+          }
+          window.location.href = url.toString();
+        }, 300);
+      }
+    });
+
+    if (userSelectForm) {
+      userSelectForm.addEventListener('submit', () => {
         skipLogoutOnUnload = true;
       });
     }
@@ -226,46 +476,58 @@
     if (deleteUserForm) {
       deleteUserForm.addEventListener('submit', () => {
         skipLogoutOnUnload = true;
-      });
-    }
-
-    if (userSelectForm) {
-      const select = userSelectForm.querySelector('select');
-      if (select) {
-        select.addEventListener('change', () => {
-          userSelectForm.submit();
-        });
-      }
-    }
-
-    function attachAjaxForm(form, successMessage, errorMessage) {
-      if (!form) {
-        return;
-      }
-      form.addEventListener('submit', function(e) {
-        e.preventDefault();
         overlay.style.display = 'flex';
-        fetch('{{ url_for("app.admin") }}', {
-          method: 'POST',
-          body: new FormData(form),
-          headers: {'X-Requested-With': 'XMLHttpRequest'}
-        }).then(r => {
-          if (!r.ok) throw new Error();
-          return r.json();
-        }).then(() => {
-          overlay.style.display = 'none';
-          showAlert(successMessage, 'success');
-          skipLogoutOnUnload = true;
-          setTimeout(() => window.location.reload(), 500);
-        }).catch(() => {
-          overlay.style.display = 'none';
-          showAlert(errorMessage, 'danger');
-        });
       });
     }
 
-    attachAjaxForm(userForm, 'Configuración del contratante guardada correctamente', 'Error al guardar la configuración del contratante');
-    attachAjaxForm(globalForm, 'Ajustes del sistema guardados correctamente', 'Error al guardar los ajustes del sistema');
+    if (addModal && addContratanteForm) {
+      addModal.addEventListener('show.bs.modal', () => {
+        addContratanteForm.reset();
+        const periodoField = addContratanteForm.querySelector('[name="periodo_actualizacion_meses"]');
+        if (periodoField) {
+          periodoField.value = '3';
+        }
+      });
+    }
+
+    if (editModal && userForm) {
+      editModal.addEventListener('show.bs.modal', () => {
+        const currentId = select ? select.value : '';
+        const data = contratantesData[currentId] || {};
+        const config = data.config || {};
+        const fields = ['nombre', 'apellido', 'dni', 'direccion', 'telefono', 'mail', 'fecha_inicio_contrato', 'valor_inicial_contrato', 'inmueble_locado'];
+        fields.forEach((field) => {
+          const input = userForm.querySelector(`[name="${field}"]`);
+          if (input) {
+            input.value = config[field] || '';
+          }
+        });
+        const periodoField = userForm.querySelector('[name="periodo_actualizacion_meses"]');
+        if (periodoField) {
+          periodoField.value = config.periodo_actualizacion_meses || '3';
+          if (!periodoField.value) {
+            periodoField.value = '3';
+          }
+        }
+        const selectedInput = userForm.querySelector('[name="selected_user"]');
+        if (selectedInput) {
+          selectedInput.value = currentId || '';
+        }
+      });
+    }
+
+    if (deleteModal) {
+      deleteModal.addEventListener('show.bs.modal', () => {
+        const currentId = select ? select.value : '';
+        const data = contratantesData[currentId] || {};
+        if (deleteModalText) {
+          const label = data.label || currentId;
+          deleteModalText.textContent = label
+            ? `¿Seguro que querés eliminar a ${label}? Esta acción no se puede deshacer.`
+            : '¿Seguro que querés eliminar este contratante? Esta acción no se puede deshacer.';
+        }
+      });
+    }
 
     window.addEventListener('beforeunload', () => {
       if (!skipLogoutOnUnload && navigator.sendBeacon) {

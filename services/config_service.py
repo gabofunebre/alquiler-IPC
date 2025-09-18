@@ -15,7 +15,19 @@ ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "admin")
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "..", "config", "config.json")
 
-USER_CONFIG_KEYS = {"alquiler_base", "fecha_inicio_contrato", "periodo_actualizacion_meses"}
+USER_CONFIG_KEYS = {
+    "nombre",
+    "apellido",
+    "dni",
+    "direccion",
+    "telefono",
+    "mail",
+    "fecha_inicio_contrato",
+    "valor_inicial_contrato",
+    "periodo_actualizacion_meses",
+    "inmueble_locado",
+    "alquiler_base",
+}
 
 
 def _sanitize_global_config(data: Any) -> Dict[str, Any]:
