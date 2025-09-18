@@ -23,7 +23,19 @@ USER_CONFIG_KEYS = {"alquiler_base", "fecha_inicio_contrato", "periodo_actualiza
 def _sanitize_global_config(data: Any) -> Dict[str, Any]:
     if not isinstance(data, dict):
         return {}
+
     sanitized = {k: v for k, v in data.items() if k not in USER_CONFIG_KEYS}
+
+    csv_url_value = sanitized.get("csv_url")
+    if isinstance(csv_url_value, str):
+        stripped = csv_url_value.strip()
+        if stripped:
+            sanitized["csv_url"] = stripped
+        else:
+            sanitized.pop("csv_url", None)
+    elif "csv_url" in sanitized:
+        sanitized.pop("csv_url")
+
     return sanitized
 
 
@@ -40,7 +52,7 @@ def _write_config(data: Dict[str, Any]) -> None:
     else:
         to_store = data
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2, sort_keys=True)
+        json.dump(to_store, fh, indent=2, sort_keys=True)
 
 
 def load_config() -> Dict[str, Any]:
@@ -65,3 +77,13 @@ def save_config(data: Dict[str, Any]) -> None:
 
     sanitized = _sanitize_global_config(data)
     _write_config(sanitized)
+
+
+def get_csv_url() -> str:
+    """Return the configured CSV URL, falling back to defaults."""
+
+    config = load_config()
+    csv_url = config.get("csv_url")
+    if isinstance(csv_url, str) and csv_url.strip():
+        return csv_url.strip()
+    return DEFAULT_CSV_URL
