@@ -17,71 +17,19 @@ ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "admin")
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "..", "config", "config.json")
 
-_DEFAULT_CONFIG: Dict[str, Any] = {
-    "alquiler_base": "",
-    "fecha_inicio_contrato": "",
-    "periodo_actualizacion_meses": "",
-    "csv_url": "",
-}
+USER_CONFIG_KEYS = {"alquiler_base", "fecha_inicio_contrato", "periodo_actualizacion_meses"}
 
 
-def _config_path() -> str:
-    return os.path.abspath(CONFIG_FILE)
-
-
-def _read_raw_config() -> Dict[str, Any]:
-    """Return the raw config from disk without applying defaults."""
-
-    path = _config_path()
-    if not os.path.exists(path):
-        return {}
-    with open(path, "r", encoding="utf-8") as fh:
-        data = json.load(fh)
+def _sanitize_global_config(data: Any) -> Dict[str, Any]:
     if not isinstance(data, dict):
         return {}
-    return data
+    sanitized = {k: v for k, v in data.items() if k not in USER_CONFIG_KEYS}
+    return sanitized
 
 
-def load_config() -> Dict[str, Any]:
-    """Load configuration applying defaults for missing values."""
+def _write_config(data: Dict[str, Any]) -> None:
+    path = os.path.abspath(CONFIG_FILE)
 
-    data = _DEFAULT_CONFIG.copy()
-    raw = _read_raw_config()
-    data.update(raw)
-    csv_url = raw.get("csv_url") if isinstance(raw, dict) else ""
-    if isinstance(csv_url, str):
-        csv_url = csv_url.strip()
-    elif csv_url is not None:
-        csv_url = str(csv_url)
-    else:
-        csv_url = ""
-    if csv_url:
-        data["csv_url"] = csv_url
-    else:
-        data["csv_url"] = DEFAULT_CSV_URL
-    return data
-
-
-def get_csv_url() -> str:
-    """Return the configured CSV URL falling back to environment defaults."""
-
-    raw = _read_raw_config()
-    csv_url = raw.get("csv_url") if isinstance(raw, dict) else ""
-    if isinstance(csv_url, str):
-        csv_url = csv_url.strip()
-    elif csv_url is not None:
-        csv_url = str(csv_url)
-    else:
-        csv_url = ""
-    if csv_url:
-        return csv_url
-    return DEFAULT_CSV_URL
-
-
-def save_config(data: Dict[str, Any]) -> None:
-    """Persist configuration to JSON file."""
-
-    path = _config_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     to_store: Any
     if isinstance(data, dict):
@@ -92,4 +40,28 @@ def save_config(data: Dict[str, Any]) -> None:
     else:
         to_store = data
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump(to_store, fh)
+        json.dump(data, fh, indent=2, sort_keys=True)
+
+
+def load_config() -> Dict[str, Any]:
+    """Load global configuration from JSON file."""
+
+    path = os.path.abspath(CONFIG_FILE)
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except (json.JSONDecodeError, OSError):
+        return {}
+    sanitized = _sanitize_global_config(raw)
+    if sanitized != raw:
+        _write_config(sanitized)
+    return sanitized
+
+
+def save_config(data: Dict[str, Any]) -> None:
+    """Persist global configuration to JSON file."""
+
+    sanitized = _sanitize_global_config(data)
+    _write_config(sanitized)
