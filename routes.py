@@ -18,7 +18,7 @@ from services.config_service import (
     save_config,
     ADMIN_USER,
     ADMIN_PASS,
-    CSV_URL,
+    get_csv_url,
 )
 from services.ipc_service import leer_csv, parse_fechas, ipc_dict_with_status
 from services.alquiler_service import generar_tabla_alquiler, meses_hasta_fin_anio
@@ -107,7 +107,7 @@ def ipc_ultimos():
         cache_info["last_checked_at"] = status["last_checked_at"].isoformat()
     return jsonify(
         {
-            "source": CSV_URL,
+            "source": status.get("source") or get_csv_url(),
             "last_month": last_date,
             "count": len(out),
             "data": out,

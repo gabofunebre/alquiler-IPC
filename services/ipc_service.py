@@ -9,7 +9,7 @@ import requests
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone, date
 
-from .config_service import CSV_URL
+from . import config_service
 
 
 CACHE_PATH = os.path.join("config", "ipc.csv")
@@ -90,6 +90,7 @@ def _write_meta(meta: dict) -> None:
 
 def leer_csv():
     """Leer y cachear el CSV del IPC."""
+    csv_url = config_service.get_csv_url()
     meta = _read_meta()
     cache_exists = os.path.exists(CACHE_PATH)
     cache_age = None
@@ -97,7 +98,7 @@ def leer_csv():
         cache_age = time.time() - os.path.getmtime(CACHE_PATH)
 
     status = {
-        "source": CSV_URL,
+        "source": csv_url,
         "used_cache": False,
         "updated": False,
         "stale": False,
@@ -130,7 +131,7 @@ def leer_csv():
 
     try:
         status["last_checked_at"] = datetime.now(timezone.utc)
-        response = requests.get(CSV_URL, timeout=20, headers=headers or None)
+        response = requests.get(csv_url, timeout=20, headers=headers or None)
         if response.status_code == 304 and cache_exists:
             if cached_header is None or cached_rows is None:
                 rows = _load_cache_rows()

@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-CSV_URL = os.getenv(
+DEFAULT_CSV_URL = os.getenv(
     "CSV_URL",
     os.getenv(
         "CSV_DATOS",
@@ -29,7 +29,16 @@ def _sanitize_global_config(data: Any) -> Dict[str, Any]:
 
 def _write_config(data: Dict[str, Any]) -> None:
     path = os.path.abspath(CONFIG_FILE)
+
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    to_store: Any
+    if isinstance(data, dict):
+        to_store = data.copy()
+        csv_url_value = to_store.get("csv_url")
+        if isinstance(csv_url_value, str):
+            to_store["csv_url"] = csv_url_value.strip()
+    else:
+        to_store = data
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2, sort_keys=True)
 
