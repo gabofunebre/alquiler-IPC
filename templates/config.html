@@ -9,8 +9,8 @@
     #overlay {position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,.8);display:none;align-items:center;justify-content:center;z-index:1000;}
     .periodo0.offset0 td {background-color:#ffffff;}
     .periodo0.offset1 td {background-color:#f2f2f2;}
-      .periodo1.offset0 td {background-color:#e7f5ff;}
-      .periodo1.offset1 td {background-color:#d0ebff;}
+    .periodo1.offset0 td {background-color:#e7f5ff;}
+    .periodo1.offset1 td {background-color:#d0ebff;}
   </style>
 </head>
 <body>
@@ -22,77 +22,108 @@
       </form>
     </div>
   </nav>
-  <div class="container">
+  <div class="container pb-5">
     <div id="alert-placeholder"></div>
-    <h2 class="h5">Usuarios</h2>
-    <form id="add-user-form" class="mb-3 d-flex" action="{{ url_for('app.admin_add_user') }}" method="post">
-      <input type="text" class="form-control me-2" name="new_user" placeholder="Nombre">
-      <button class="btn btn-primary" type="submit">Agregar usuario</button>
-    </form>
-    <form id="delete-user-form" class="mb-4 d-flex" action="{{ url_for('app.admin_delete_user') }}" method="post">
-      <select class="form-select me-2" name="user" {% if not users %}disabled{% endif %}>
-        {% for u in users %}
-        <option value="{{ u }}" {% if u == selected_user %}selected{% endif %}>{{ u }}</option>
-        {% endfor %}
-      </select>
-      <button class="btn btn-danger" type="submit" {% if not users %}disabled{% endif %}>Eliminar usuario</button>
-    </form>
 
-    <hr>
-    <h2 class="h5">Configuración por usuario</h2>
-    {% if users %}
-    <form id="user-select-form" class="row g-3 align-items-end mb-3" method="get">
-      <div class="col-sm-6 col-md-4">
-        <label class="form-label" for="selected-user">Usuario</label>
-        <select class="form-select" id="selected-user" name="user">
-          {% for u in users %}
-          <option value="{{ u }}" {% if u == selected_user %}selected{% endif %}>{{ u }}</option>
-          {% endfor %}
-        </select>
+    <section class="mb-5">
+      <div class="d-flex align-items-center mb-3">
+        <h2 class="h5 mb-0">Configuración del sistema</h2>
       </div>
-      <div class="col-auto">
-        <button type="submit" class="btn btn-secondary">Cambiar</button>
+      <form id="global-config-form" method="post" class="mb-3">
+        <input type="hidden" name="form_type" value="global">
+        <input type="hidden" name="selected_user" value="{{ selected_user or '' }}">
+        <div class="mb-3">
+          <label class="form-label" for="csv-url-input">URL del CSV del IPC</label>
+          <input type="url" class="form-control" id="csv-url-input" name="csv_url" value="{{ csv_url_configured }}" placeholder="https://...">
+          <div class="form-text">Se aplica a todos los contratantes. Si queda vacío se usa la URL oficial del INDEC.</div>
+        </div>
+        {% if global_config_extras %}
+        {% for key, value in global_config_extras.items() %}
+        <div class="mb-3">
+          <label class="form-label" for="global-field-{{ loop.index }}">{{ key.replace('_', ' ')|capitalize }}</label>
+          <input type="text" class="form-control" id="global-field-{{ loop.index }}" name="{{ key }}" value="{{ value }}">
+        </div>
+        {% endfor %}
+        {% endif %}
+        <button type="submit" class="btn btn-primary">Guardar ajustes del sistema</button>
+      </form>
+      <div class="border rounded p-3 bg-light">
+        <p class="mb-1"><strong>URL en uso:</strong> <code>{{ csv_url_current }}</code></p>
+        <p class="mb-1"><strong>Archivo descargado:</strong> {{ 'Sí' if csv_cache_info.has_cache else 'No' }}</p>
+        <p class="mb-0">
+          <strong>Última descarga:</strong>
+          {% if csv_cache_info.last_cached_at_text %}
+            {{ csv_cache_info.last_cached_at_text }}
+          {% elif csv_cache_info.fetched_at_text %}
+            {{ csv_cache_info.fetched_at_text }}
+          {% else %}
+            &mdash;
+          {% endif %}
+        </p>
       </div>
-    </form>
-    {% if selected_user %}
-    <p class="text-muted">Editando configuración de <strong>{{ selected_user }}</strong>.</p>
-    {% endif %}
-    <form id="user-config-form" method="post" class="mb-4">
-      <input type="hidden" name="form_type" value="user">
-      <input type="hidden" name="selected_user" value="{{ selected_user or '' }}">
-      <div class="mb-3">
-        <label class="form-label">Alquiler base</label>
-        <input type="number" step="0.01" class="form-control" name="alquiler_base" value="{{ user_config.alquiler_base }}">
+    </section>
+
+    <section class="mb-4">
+      <div class="d-flex align-items-center mb-3">
+        <h2 class="h5 mb-0">Contratantes</h2>
+        <button type="button" class="btn btn-primary ms-auto" data-bs-toggle="modal" data-bs-target="#addContratanteModal">
+          Agregar contratante
+        </button>
       </div>
-      <div class="mb-3">
-        <label class="form-label">Fecha de inicio de contrato</label>
-        <input type="date" class="form-control" name="fecha_inicio_contrato" value="{{ user_config.fecha_inicio_contrato }}">
-      </div>
-      <div class="mb-3">
-        <label class="form-label">Período de actualización por IPC (meses)</label>
-        {% set periodo_sel = user_config.periodo_actualizacion_meses|default(3, true)|int %}
-        <select class="form-select" name="periodo_actualizacion_meses">
-          {% for n in range(1, 13) %}
-          <option value="{{ n }}" {% if periodo_sel == n %}selected{% endif %}>{{ n }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="mb-3">
-        <label class="form-label" for="csv-url-input">URL del CSV del IPC</label>
-        <input type="url" class="form-control" id="csv-url-input" name="csv_url" value="{{ config.csv_url }}" placeholder="https://...">
-      </div>
-      <button type="submit" class="btn btn-primary">Guardar</button>
-    </form>
-    {% else %}
-    <p class="text-muted mb-4">No hay usuarios cargados. Agregá uno para configurar sus valores.</p>
-    {% endif %}
+      {% if contratantes %}
+      <form id="user-select-form" class="row g-3 align-items-end mb-3" method="get">
+        <div class="col-sm-6 col-md-4">
+          <label class="form-label" for="selected-user">Contratante</label>
+          <select class="form-select" id="selected-user" name="user">
+            {% for u in contratantes %}
+            <option value="{{ u }}" {% if u == selected_user %}selected{% endif %}>{{ u }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-secondary">Ver</button>
+        </div>
+      </form>
+      <form id="delete-user-form" class="mb-4 d-flex" action="{{ url_for('app.admin_delete_user') }}" method="post">
+        <input type="hidden" name="user" value="{{ selected_user or '' }}">
+        <button class="btn btn-outline-danger ms-auto" type="submit" {% if not selected_user %}disabled{% endif %}>Eliminar contratante</button>
+      </form>
+      {% if selected_user %}
+      <p class="text-muted">Editando configuración de <strong>{{ selected_user }}</strong>.</p>
+      {% endif %}
+      <form id="user-config-form" method="post" class="mb-4">
+        <input type="hidden" name="form_type" value="user">
+        <input type="hidden" name="selected_user" value="{{ selected_user or '' }}">
+        <div class="mb-3">
+          <label class="form-label">Alquiler base</label>
+          <input type="number" step="0.01" class="form-control" name="alquiler_base" value="{{ user_config.alquiler_base }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Fecha de inicio de contrato</label>
+          <input type="date" class="form-control" name="fecha_inicio_contrato" value="{{ user_config.fecha_inicio_contrato }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Período de actualización por IPC (meses)</label>
+          {% set periodo_sel = user_config.periodo_actualizacion_meses|default(3, true)|int %}
+          <select class="form-select" name="periodo_actualizacion_meses">
+            {% for n in range(1, 13) %}
+            <option value="{{ n }}" {% if periodo_sel == n %}selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary" {% if not selected_user %}disabled{% endif %}>Guardar contratante</button>
+      </form>
+      {% else %}
+      <p class="text-muted mb-4">No hay contratantes cargados. Creá uno para configurar sus datos.</p>
+      {% endif %}
+    </section>
 
     {% if tabla_error %}
     <div class="alert alert-danger mt-3" role="alert">{{ tabla_error }}</div>
     {% endif %}
     {% if tabla %}
     <hr>
-    <h2 class="h5 mt-4">Tabla de alquiler</h2>
+    <h2 class="h5 mt-4">Tabla de alquiler para {{ selected_user }}</h2>
     <div class="text-end mb-2">Fecha de hoy: {{ fecha_hoy }}</div>
     {% if ipc_status and ipc_status.last_cached_at_text %}
     <div class="text-end text-muted mb-2">Última actualización del IPC: {{ ipc_status.last_cached_at_text }}</div>
@@ -108,18 +139,14 @@
         <tr><th>Mes</th><th>IPC</th><th>Ajuste</th><th>Valor</th></tr>
       </thead>
       <tbody>
-        {% if tabla %}
         {% for fila in tabla %}
-          <tr class="periodo{{ fila.periodo % 2 }} offset{{ fila.offset % 2 }}">
-            <td>{{ fila.mes }}</td>
-            <td>{% if fila.ipc is defined and fila.ipc is not none %}{{ '{:.1f}'.format(fila.ipc)|replace('.', ',') }}%{% endif %}</td>
-            <td>{% if fila.ajuste is not none %}${{ '{:,.0f}'.format(fila.ajuste) }}{% endif %}</td>
-            <td>{% if fila.valor is not none %}${{ '{:,.0f}'.format(fila.valor) }}{% endif %}{% if fila.provisorio is defined and fila.provisorio %} <span class="badge bg-warning text-dark">Provisorio</span>{% endif %}</td>
-          </tr>
-      {% endfor %}
-        {% else %}
-          <tr><td colspan="4" class="text-center">Sin datos disponibles</td></tr>
-        {% endif %}
+        <tr class="periodo{{ fila.periodo % 2 }} offset{{ fila.offset % 2 }}">
+          <td>{{ fila.mes }}</td>
+          <td>{% if fila.ipc is defined and fila.ipc is not none %}{{ '{:.1f}'.format(fila.ipc)|replace('.', ',') }}%{% endif %}</td>
+          <td>{% if fila.ajuste is not none %}${{ '{:,.0f}'.format(fila.ajuste) }}{% endif %}</td>
+          <td>{% if fila.valor is not none %}${{ '{:,.0f}'.format(fila.valor) }}{% endif %}{% if fila.provisorio is defined and fila.provisorio %} <span class="badge bg-warning text-dark">Provisorio</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
       </tbody>
     </table>
     {% elif tabla_error %}
@@ -130,54 +157,78 @@
     {% if selected_user %}
     <div class="alert alert-info mt-4">No hay datos de configuración para {{ selected_user }}. Completá el formulario para generarlos.</div>
     {% else %}
-    <div class="alert alert-info mt-4">No hay usuarios configurados. Agregá uno para comenzar.</div>
+    <div class="alert alert-info mt-4">No hay contratantes configurados. Agregá uno para comenzar.</div>
     {% endif %}
-    {% endif %}
-
-    <hr>
-    <h2 class="h5 mt-4">Ajustes globales</h2>
-    {% if global_config %}
-    <form id="global-config-form" method="post" class="mb-4">
-      <input type="hidden" name="form_type" value="global">
-      <input type="hidden" name="selected_user" value="{{ selected_user or '' }}">
-      {% for key, value in global_config.items() %}
-      <div class="mb-3">
-        <label class="form-label" for="global-field-{{ loop.index }}">{{ key.replace('_', ' ')|capitalize }}</label>
-        <input type="text" class="form-control" id="global-field-{{ loop.index }}" name="{{ key }}" value="{{ value }}">
-      </div>
-      {% endfor %}
-      <button type="submit" class="btn btn-primary">Guardar ajustes globales</button>
-    </form>
-    {% else %}
-    <p class="text-muted">No hay ajustes globales configurables.</p>
     {% endif %}
   </div>
+
+  <div class="modal fade" id="addContratanteModal" tabindex="-1" aria-labelledby="addContratanteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <form id="add-contratante-form" class="modal-content" action="{{ url_for('app.admin_add_user') }}" method="post">
+        <div class="modal-header">
+          <h5 class="modal-title" id="addContratanteModalLabel">Nuevo contratante</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label" for="new-user-name">Nombre del contratante</label>
+            <input type="text" class="form-control" id="new-user-name" name="new_user" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="new-user-base">Alquiler base</label>
+            <input type="number" step="0.01" class="form-control" id="new-user-base" name="alquiler_base">
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="new-user-fecha">Fecha de inicio de contrato</label>
+            <input type="date" class="form-control" id="new-user-fecha" name="fecha_inicio_contrato">
+          </div>
+          <div class="mb-0">
+            <label class="form-label" for="new-user-periodo">Período de actualización por IPC (meses)</label>
+            <select class="form-select" id="new-user-periodo" name="periodo_actualizacion_meses">
+              {% for n in range(1, 13) %}
+              <option value="{{ n }}" {% if n == 3 %}selected{% endif %}>{{ n }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar contratante</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div id="overlay"><div class="spinner-border text-primary" role="status"></div></div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     const userForm = document.getElementById('user-config-form');
     const globalForm = document.getElementById('global-config-form');
     const userSelectForm = document.getElementById('user-select-form');
+    const addContratanteForm = document.getElementById('add-contratante-form');
+    const deleteUserForm = document.getElementById('delete-user-form');
     let skipLogoutOnUnload = false;
     const overlay = document.getElementById('overlay');
     const alertPlaceholder = document.getElementById('alert-placeholder');
+
     function showAlert(message, type) {
       const wrapper = document.createElement('div');
       wrapper.innerHTML = `<div class="alert alert-${type} alert-dismissible" role="alert">${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
       alertPlaceholder.append(wrapper);
     }
-    const addUserForm = document.getElementById('add-user-form');
-    if (addUserForm) {
-      addUserForm.addEventListener('submit', () => {
+
+    if (addContratanteForm) {
+      addContratanteForm.addEventListener('submit', () => {
         skipLogoutOnUnload = true;
       });
     }
-    const deleteUserForm = document.getElementById('delete-user-form');
+
     if (deleteUserForm) {
       deleteUserForm.addEventListener('submit', () => {
         skipLogoutOnUnload = true;
       });
     }
+
     if (userSelectForm) {
       const select = userSelectForm.querySelector('select');
       if (select) {
@@ -186,6 +237,7 @@
         });
       }
     }
+
     function attachAjaxForm(form, successMessage, errorMessage) {
       if (!form) {
         return;
@@ -211,8 +263,10 @@
         });
       });
     }
-    attachAjaxForm(userForm, 'Configuración del usuario guardada correctamente', 'Error al guardar configuración del usuario');
-    attachAjaxForm(globalForm, 'Ajustes globales guardados correctamente', 'Error al guardar ajustes globales');
+
+    attachAjaxForm(userForm, 'Configuración del contratante guardada correctamente', 'Error al guardar la configuración del contratante');
+    attachAjaxForm(globalForm, 'Ajustes del sistema guardados correctamente', 'Error al guardar los ajustes del sistema');
+
     window.addEventListener('beforeunload', () => {
       if (!skipLogoutOnUnload && navigator.sendBeacon) {
         navigator.sendBeacon('{{ url_for('app.logout') }}', '');

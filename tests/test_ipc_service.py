@@ -169,6 +169,32 @@ class LeerCsvTests(unittest.TestCase):
         self.assertEqual(rows, [["2024-05-01", "1.50"]])
         self.assertEqual(status["source"], custom_url)
 
+    def test_get_csv_cache_status_without_cache(self):
+        info = ipc_service.get_csv_cache_status()
+        self.assertFalse(info["has_cache"])
+        self.assertIsNone(info["last_cached_at"])
+        self.assertIsNone(info["last_cached_at_text"])
+        self.assertIsNone(info["fetched_at"])
+        self.assertIsNone(info["fetched_at_text"])
+
+    def test_get_csv_cache_status_with_cache(self):
+        timestamp = datetime(2024, 5, 10, 12, 30, tzinfo=timezone.utc)
+        csv_content = "fecha,valor\n2024-05-01,1.50\n"
+        self._write_cache(csv_content)
+        os.utime(self.cache_path, (timestamp.timestamp(), timestamp.timestamp()))
+        meta = {"fetched_at": "2024-05-09T10:00:00+00:00"}
+        with open(self.meta_path, "w", encoding="utf-8") as fh:
+            json.dump(meta, fh)
+
+        info = ipc_service.get_csv_cache_status()
+
+        self.assertTrue(info["has_cache"])
+        self.assertEqual(info["last_cached_at"], timestamp)
+        self.assertIsInstance(info["last_cached_at_text"], str)
+        expected_fetched = datetime(2024, 5, 9, 10, 0, tzinfo=timezone.utc)
+        self.assertEqual(info["fetched_at"], expected_fetched)
+        self.assertIsInstance(info["fetched_at_text"], str)
+
 
 class CacheFreshnessRuleTests(unittest.TestCase):
     def test_is_cache_stale_on_15th_without_previous_month(self):

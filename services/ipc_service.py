@@ -88,6 +88,43 @@ def _write_meta(meta: dict) -> None:
         json.dump(meta, fh)
 
 
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def get_csv_cache_status() -> dict:
+    """Return information about the cached CSV file without triggering downloads."""
+
+    has_cache = os.path.exists(CACHE_PATH)
+    last_cached_at = _cache_last_modified() if has_cache else None
+    meta = _read_meta()
+    fetched_at = None
+    fetched_at_raw = meta.get("fetched_at") if isinstance(meta, dict) else None
+    if isinstance(fetched_at_raw, str):
+        fetched_at = _parse_iso_datetime(fetched_at_raw)
+
+    def _fmt(dt: datetime | None) -> str | None:
+        if not isinstance(dt, datetime):
+            return None
+        return dt.astimezone().strftime("%d-%m-%Y %H:%M %Z")
+
+    return {
+        "has_cache": bool(has_cache and last_cached_at),
+        "last_cached_at": last_cached_at,
+        "last_cached_at_text": _fmt(last_cached_at),
+        "fetched_at": fetched_at,
+        "fetched_at_text": _fmt(fetched_at),
+    }
+
+
 def leer_csv():
     """Leer y cachear el CSV del IPC."""
     csv_url = config_service.get_csv_url()
