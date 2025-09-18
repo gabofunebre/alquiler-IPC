@@ -22,7 +22,13 @@ from services.config_service import (
 )
 from services.ipc_service import leer_csv, parse_fechas, ipc_dict_with_status
 from services.alquiler_service import generar_tabla_alquiler, meses_hasta_fin_anio
-from services.user_service import load_users, add_user, delete_user
+from services.user_service import (
+    list_users,
+    add_user,
+    delete_user,
+    get_user_config,
+    save_user_config,
+)
 
 bp = Blueprint("app", __name__)
 logger = logging.getLogger(__name__)
@@ -116,7 +122,7 @@ def index():
         error = None
         if request.method == "POST":
             nombre = request.form.get("name", "").strip().lower()
-            if nombre and nombre in load_users():
+            if nombre and nombre in list_users():
                 session.clear()
                 session["user"] = nombre
                 session.permanent = False  # expira al cerrar el navegador
@@ -124,17 +130,17 @@ def index():
             error = "Usuario no encontrado"
         return render_template("user_login.html", error=error)
 
-    config = load_config()
+    user_config = get_user_config(session.get("user"))
     tabla = []
     tabla_error = None
     ipc_status = None
-    base_raw = config.get("alquiler_base")
-    inicio_raw = config.get("fecha_inicio_contrato", "")
+    base_raw = user_config.get("alquiler_base")
+    inicio_raw = user_config.get("fecha_inicio_contrato", "")
     if base_raw and inicio_raw:
         try:
             base = Decimal(base_raw)
             inicio = inicio_raw[:7]
-            periodo = int(config.get("periodo_actualizacion_meses") or 3)
+            periodo = int(user_config.get("periodo_actualizacion_meses") or 3)
             meses = meses_hasta_fin_anio(inicio)
             ipc_data, ipc_status = ipc_dict_with_status()
             tabla = generar_tabla_alquiler(base, inicio, periodo, meses, ipc_data=ipc_data)
@@ -156,27 +162,40 @@ def index():
 
 @bp.get("/alquiler/tabla")
 def alquiler_tabla():
-    config = load_config()
-    base = request.args.get("alquiler_base", config.get("alquiler_base"))
-    inicio = request.args.get("fecha_inicio_contrato", config.get("fecha_inicio_contrato", "")[:7])
-    periodo = int(
-        request.args.get(
-            "periodo_actualizacion_meses",
-            config.get("periodo_actualizacion_meses") or 3,
-        )
-    )
-    meses_param = request.args.get("meses")
-    if meses_param is not None:
-        meses = int(meses_param)
-    else:
-        meses = meses_hasta_fin_anio(inicio[:7])
+    user_config = get_user_config(session.get("user"))
+    base = request.args.get("alquiler_base")
+    if base is None:
+        base = user_config.get("alquiler_base")
+    inicio = request.args.get("fecha_inicio_contrato")
+    if inicio is None:
+        inicio = user_config.get("fecha_inicio_contrato", "")
+    periodo_value = request.args.get("periodo_actualizacion_meses")
+    if periodo_value is None:
+        periodo_value = user_config.get("periodo_actualizacion_meses")
+    try:
+        periodo = int(periodo_value or 3)
+    except (TypeError, ValueError):
+        abort(400, "periodo_actualizacion_meses inválido")
+
     if not base or not inicio:
         abort(400, "Faltan parámetros")
+
+    inicio_mes = inicio[:7]
+    meses_param = request.args.get("meses")
+    if meses_param is not None:
+        try:
+            meses = int(meses_param)
+        except (TypeError, ValueError):
+            abort(400, "meses inválido")
+    else:
+        meses = meses_hasta_fin_anio(inicio_mes)
+
     try:
         base_dec = Decimal(base)
     except InvalidOperation:
         abort(400, "alquiler_base inválido")
-    tabla = generar_tabla_alquiler(base_dec, inicio[:7], periodo, meses)
+
+    tabla = generar_tabla_alquiler(base_dec, inicio_mes, periodo, meses)
     return jsonify({"tabla": tabla})
 
 
@@ -184,18 +203,37 @@ def alquiler_tabla():
 def admin():
     """Pantalla de login y configuración"""
     if session.get("logged_in"):
-        config = load_config()
-        users = load_users()
+        global_config = load_config()
+        users = list_users()
+        selected_param = request.values.get("selected_user")
+        if not selected_param:
+            selected_param = request.args.get("user")
+        selected_user = selected_param.strip().lower() if selected_param else None
+        if selected_user not in users:
+            selected_user = users[0] if users else None
+
         if request.method == "POST":
-            config.update(
-                {
-                    "alquiler_base": request.form.get("alquiler_base", ""),
-                    "fecha_inicio_contrato": request.form.get("fecha_inicio_contrato", ""),
-                    "periodo_actualizacion_meses": request.form.get("periodo_actualizacion_meses", ""),
-                }
-            )
+            form_type = request.form.get("form_type", "user")
             try:
-                save_config(config)
+                if form_type == "global":
+                    updated_config = global_config.copy()
+                    for key, value in request.form.items():
+                        if key in {"form_type", "selected_user"}:
+                            continue
+                        updated_config[key] = value
+                    save_config(updated_config)
+                    global_config = load_config()
+                else:
+                    if not selected_user:
+                        abort(400)
+                    save_user_config(
+                        selected_user,
+                        {
+                            "alquiler_base": request.form.get("alquiler_base", ""),
+                            "fecha_inicio_contrato": request.form.get("fecha_inicio_contrato", ""),
+                            "periodo_actualizacion_meses": request.form.get("periodo_actualizacion_meses", ""),
+                        },
+                    )
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                     return jsonify({"ok": True})
             except (TypeError, ValueError) as exc:
@@ -212,17 +250,22 @@ def admin():
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                     return jsonify({"ok": False}), 500
                 raise
+            users = list_users()
+            if selected_user not in users:
+                selected_user = users[0] if users else None
+
+        user_config = get_user_config(selected_user) if selected_user else get_user_config(None)
         tabla = []
         tabla_error = None
         ipc_status = None
-        base_raw = config.get("alquiler_base")
-        inicio_raw = config.get("fecha_inicio_contrato", "")
-        tiene_config = bool(base_raw and inicio_raw)
-        if tiene_config: 
+        base_raw = user_config.get("alquiler_base")
+        inicio_raw = user_config.get("fecha_inicio_contrato", "")
+        tiene_config = bool(selected_user and base_raw and inicio_raw)
+        if tiene_config:
             try:
                 base = Decimal(base_raw)
                 inicio = inicio_raw[:7]
-                periodo = int(config.get("periodo_actualizacion_meses") or 3)
+                periodo = int(user_config.get("periodo_actualizacion_meses") or 3)
                 meses = meses_hasta_fin_anio(inicio)
                 ipc_data, ipc_status = ipc_dict_with_status()
                 tabla = generar_tabla_alquiler(
@@ -236,12 +279,14 @@ def admin():
                 tabla_error = "Error cargando IPC. Intentá nuevamente más tarde."
         return render_template(
             "config.html",
-            config=config,
+            global_config=global_config,
+            user_config=user_config,
             tabla=tabla,
             tabla_error=tabla_error,
             ipc_status=_format_ipc_status(ipc_status),
             fecha_hoy=date.today().strftime("%d-%m-%Y"),
             users=users,
+            selected_user=selected_user,
             tiene_config=tiene_config,
         )
 
@@ -263,9 +308,10 @@ def admin():
 def admin_add_user():
     if not session.get("logged_in"):
         abort(403)
-    nombre = request.form.get("new_user", "").strip().lower()
-    if nombre:
-        add_user(nombre)
+    nombre = request.form.get("new_user", "")
+    nuevo = add_user(nombre)
+    if nuevo:
+        return redirect(url_for("app.admin", user=nuevo))
     return redirect(url_for("app.admin"))
 
 
@@ -273,7 +319,7 @@ def admin_add_user():
 def admin_delete_user():
     if not session.get("logged_in"):
         abort(403)
-    nombre = request.form.get("user", "").strip().lower()
+    nombre = request.form.get("user", "")
     if nombre:
         delete_user(nombre)
     return redirect(url_for("app.admin"))
