@@ -148,7 +148,7 @@ def _parse_iso_datetime(value: str | None) -> datetime | None:
     return parsed
 
 
-def get_csv_cache_status() -> dict:
+def get_cache_status() -> dict:
     """Return information about the cached IPC data without triggering downloads."""
 
     has_cache = os.path.exists(CACHE_PATH)
@@ -204,14 +204,14 @@ def _parse_api_payload(payload: Any) -> tuple[list[str], list[list[str]]]:
     return header, rows
 
 
-def leer_csv():
-    """Leer y cachear los datos del IPC desde la API."""
-    csv_url = config_service.get_csv_url()
+def fetch_ipc_data():
+    """Fetch and cache IPC data from the configured API."""
+    api_url = config_service.get_api_url()
     meta = _read_meta()
     cache_exists = os.path.exists(CACHE_PATH)
 
     status = {
-        "source": csv_url,
+        "source": api_url,
         "used_cache": False,
         "updated": False,
         "stale": False,
@@ -243,7 +243,7 @@ def leer_csv():
 
     try:
         status["last_checked_at"] = datetime.now(timezone.utc)
-        response = requests.get(csv_url, timeout=20, headers=headers or None)
+        response = requests.get(api_url, timeout=20, headers=headers or None)
         if response.status_code == 304 and cache_exists:
             if cached_header is None or cached_rows is None:
                 cached_header, cached_rows = _load_cache_rows()
@@ -357,7 +357,7 @@ def _rows_to_monthly_variations(rows: list[list[str]]) -> dict[str, Decimal]:
 
 def ipc_dict_with_status():
     """Return IPC dictionary along with cache status metadata."""
-    _, filas, status = leer_csv()
+    _, filas, status = fetch_ipc_data()
     out = _rows_to_monthly_variations(filas)
     return out, status
 

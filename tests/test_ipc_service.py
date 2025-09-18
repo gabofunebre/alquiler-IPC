@@ -19,7 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from services import ipc_service
 
 
-class LeerCsvTests(unittest.TestCase):
+class FetchIpcDataTests(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmpdir.cleanup)
@@ -57,7 +57,7 @@ class LeerCsvTests(unittest.TestCase):
             "get",
             side_effect=requests.RequestException("offline"),
         ):
-            header, rows, status = ipc_service.leer_csv()
+            header, rows, status = ipc_service.fetch_ipc_data()
 
         self.assertEqual(header, ["fecha", "variacion_mensual"])
         self.assertEqual(rows, [[f"{current_month}-01", "1.50"]])
@@ -91,7 +91,7 @@ class LeerCsvTests(unittest.TestCase):
 
         with mock.patch.object(ipc_service, "_is_cache_stale", fake_is_cache_stale):
             with mock.patch.object(ipc_service.requests, "get", return_value=response) as mocked_get:
-                header, rows, status = ipc_service.leer_csv()
+                header, rows, status = ipc_service.fetch_ipc_data()
 
         self.assertEqual(header, ["fecha", "variacion_mensual"])
         self.assertEqual(rows, [["2024-02-01", "1.50"]])
@@ -124,7 +124,7 @@ class LeerCsvTests(unittest.TestCase):
                 "get",
                 side_effect=requests.RequestException("offline"),
             ) as mocked_get:
-                header, rows, status = ipc_service.leer_csv()
+                header, rows, status = ipc_service.fetch_ipc_data()
 
         mocked_get.assert_called_once()
         self.assertEqual(header, ["fecha", "variacion_mensual"])
@@ -144,7 +144,7 @@ class LeerCsvTests(unittest.TestCase):
 
         with mock.patch.object(ipc_service, "_is_cache_stale", fake_is_cache_stale):
             with mock.patch.object(ipc_service.requests, "get") as mocked_get:
-                header, rows, status = ipc_service.leer_csv()
+                header, rows, status = ipc_service.fetch_ipc_data()
 
         mocked_get.assert_not_called()
         self.assertEqual(header, ["fecha", "variacion_mensual"])
@@ -152,10 +152,10 @@ class LeerCsvTests(unittest.TestCase):
         self.assertTrue(status["used_cache"])
         self.assertFalse(status["stale"])
 
-    def test_leer_csv_uses_configured_url(self):
-        custom_url = "https://example.com/custom-ipc.csv"
+    def test_fetch_ipc_data_uses_configured_url(self):
+        custom_url = "https://example.com/custom-ipc.json"
         with open(self.config_path, "w", encoding="utf-8") as f:
-            json.dump({"csv_url": custom_url}, f)
+            json.dump({"api_url": custom_url}, f)
 
         response = mock.Mock()
         response.status_code = 200
@@ -164,7 +164,7 @@ class LeerCsvTests(unittest.TestCase):
         response.json.return_value = {"data": [["2024-05-01", 1.50]]}
 
         with mock.patch.object(ipc_service.requests, "get", return_value=response) as mocked_get:
-            header, rows, status = ipc_service.leer_csv()
+            header, rows, status = ipc_service.fetch_ipc_data()
 
         mocked_get.assert_called_once()
         called_url = mocked_get.call_args.args[0]
@@ -184,22 +184,22 @@ class LeerCsvTests(unittest.TestCase):
         response.json.side_effect = ValueError("invalid json")
 
         with mock.patch.object(ipc_service.requests, "get", return_value=response):
-            header, cached_rows, status = ipc_service.leer_csv()
+            header, cached_rows, status = ipc_service.fetch_ipc_data()
 
         self.assertEqual(header, ["fecha", "variacion_mensual"])
         self.assertEqual(cached_rows, rows)
         self.assertTrue(status["used_cache"])
         self.assertIsNotNone(status["error"])
 
-    def test_get_csv_cache_status_without_cache(self):
-        info = ipc_service.get_csv_cache_status()
+    def test_get_cache_status_without_cache(self):
+        info = ipc_service.get_cache_status()
         self.assertFalse(info["has_cache"])
         self.assertIsNone(info["last_cached_at"])
         self.assertIsNone(info["last_cached_at_text"])
         self.assertIsNone(info["fetched_at"])
         self.assertIsNone(info["fetched_at_text"])
 
-    def test_get_csv_cache_status_with_cache(self):
+    def test_get_cache_status_with_cache(self):
         timestamp = datetime(2024, 5, 10, 12, 30, tzinfo=timezone.utc)
         rows = [["2024-05-01", "1.50"]]
         self._write_cache(rows)
@@ -208,7 +208,7 @@ class LeerCsvTests(unittest.TestCase):
         with open(self.meta_path, "w", encoding="utf-8") as fh:
             json.dump(meta, fh)
 
-        info = ipc_service.get_csv_cache_status()
+        info = ipc_service.get_cache_status()
 
         self.assertTrue(info["has_cache"])
         self.assertEqual(info["last_cached_at"], timestamp)

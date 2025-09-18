@@ -14,7 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from services import config_service
 
 
-class GetCsvUrlTests(unittest.TestCase):
+class GetApiUrlTests(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmpdir.cleanup)
@@ -26,28 +26,34 @@ class GetCsvUrlTests(unittest.TestCase):
 
     def test_returns_default_when_not_configured(self):
         self.assertEqual(
-            config_service.get_csv_url(), config_service.DEFAULT_CSV_URL
+            config_service.get_api_url(), config_service.DEFAULT_API_URL
         )
+        with open(self.config_path, "r", encoding="utf-8") as fh:
+            stored = json.load(fh)
+        self.assertEqual(stored.get("api_url"), config_service.DEFAULT_API_URL)
 
     def test_trims_value_and_persists_sanitized_copy(self):
-        original_value = "  https://example.com/ipc.csv  "
-        config_service.save_config({"csv_url": original_value})
+        original_value = "  https://example.com/ipc.json  "
+        config_service.save_config({"api_url": original_value})
 
         self.assertEqual(
-            config_service.get_csv_url(), "https://example.com/ipc.csv"
+            config_service.get_api_url(), "https://example.com/ipc.json"
         )
 
         with open(self.config_path, "r", encoding="utf-8") as fh:
             stored = json.load(fh)
-        self.assertEqual(stored.get("csv_url"), "https://example.com/ipc.csv")
+        self.assertEqual(stored.get("api_url"), "https://example.com/ipc.json")
 
     def test_invalid_value_falls_back_to_default(self):
-        config_service.save_config({"csv_url": 123})
+        config_service.save_config({"api_url": 123})
 
         self.assertEqual(
-            config_service.get_csv_url(), config_service.DEFAULT_CSV_URL
+            config_service.get_api_url(), config_service.DEFAULT_API_URL
         )
-        self.assertEqual(config_service.load_config(), {})
+        self.assertEqual(
+            config_service.load_config(),
+            {"api_url": config_service.DEFAULT_API_URL},
+        )
 
 
 if __name__ == "__main__":

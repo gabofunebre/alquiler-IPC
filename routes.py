@@ -18,11 +18,11 @@ from services.config_service import (
     save_config,
     ADMIN_USER,
     ADMIN_PASS,
-    get_csv_url,
+    get_api_url,
 )
 from services.ipc_service import (
     ipc_dict_with_status,
-    get_csv_cache_status,
+    get_cache_status,
 )
 from services.alquiler_service import generar_tabla_alquiler, meses_hasta_fin_anio
 from services.user_service import (
@@ -92,7 +92,7 @@ def ipc_ultimos():
         cache_info["last_checked_at"] = status["last_checked_at"].isoformat()
     return jsonify(
         {
-            "source": status.get("source") or get_csv_url(),
+            "source": status.get("source") or get_api_url(),
             "last_month": last_date,
             "count": len(out),
             "data": out,
@@ -189,13 +189,13 @@ def admin():
     """Pantalla de login y configuración"""
     if session.get("logged_in"):
         global_config = load_config()
-        csv_url_configured = global_config.get("csv_url", "")
-        csv_url_current = get_csv_url()
-        csv_cache_info = get_csv_cache_status()
+        api_url_configured = global_config.get("api_url", "")
+        api_url_current = get_api_url()
+        api_cache_info = get_cache_status()
         global_config_extras = {
             key: value
             for key, value in global_config.items()
-            if key not in {"csv_url"}
+            if key not in {"api_url"}
         }
 
         users = list_users()
@@ -217,13 +217,13 @@ def admin():
                         updated_config[key] = value
                     save_config(updated_config)
                     global_config = load_config()
-                    csv_url_configured = global_config.get("csv_url", "")
-                    csv_url_current = get_csv_url()
-                    csv_cache_info = get_csv_cache_status()
+                    api_url_configured = global_config.get("api_url", "")
+                    api_url_current = get_api_url()
+                    api_cache_info = get_cache_status()
                     global_config_extras = {
                         key: value
                         for key, value in global_config.items()
-                        if key not in {"csv_url"}
+                        if key not in {"api_url"}
                     }
                 else:
                     if not selected_user:
@@ -292,9 +292,9 @@ def admin():
             contratantes=users,
             selected_user=selected_user,
             tiene_config=tiene_config,
-            csv_url_configured=csv_url_configured,
-            csv_url_current=csv_url_current,
-            csv_cache_info=csv_cache_info,
+            api_url_configured=api_url_configured,
+            api_url_current=api_url_current,
+            api_cache_info=api_cache_info,
         )
 
     error = None
