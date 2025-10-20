@@ -52,7 +52,10 @@ class GetApiUrlTests(unittest.TestCase):
         )
         self.assertEqual(
             config_service.load_config(),
-            {"api_url": config_service.DEFAULT_API_URL},
+            {
+                "api_url": config_service.DEFAULT_API_URL,
+                "fallback_api_url": config_service.FALLBACK_API_URL,
+            },
         )
 
 

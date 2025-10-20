@@ -168,15 +168,35 @@ class FetchIpcDataTests(unittest.TestCase):
         response.raise_for_status = mock.Mock()
         response.json.return_value = {"data": [["2024-05-01", 1.50]]}
 
-        with mock.patch.object(ipc_service.requests, "get", return_value=response) as mocked_get:
+        fallback_response = mock.Mock()
+        fallback_response.status_code = 200
+        fallback_response.headers = {}
+        fallback_response.raise_for_status = mock.Mock()
+        fallback_response.json.return_value = [
+            {"fecha": "2024-06-01", "valor": 1.20}
+        ]
+
+        fallback_url = ipc_service.config_service.get_fallback_api_url()
+
+        def fake_get(url, *args, **kwargs):
+            if url == custom_url:
+                return response
+            self.assertEqual(url, fallback_url)
+            return fallback_response
+
+        with mock.patch.object(ipc_service.requests, "get", side_effect=fake_get) as mocked_get:
             header, rows, status = ipc_service.fetch_ipc_data()
 
-        mocked_get.assert_called_once()
-        called_url = mocked_get.call_args.args[0]
+        self.assertEqual(mocked_get.call_count, 2)
+        called_url = mocked_get.call_args_list[0].args[0]
         self.assertEqual(called_url, custom_url)
-        self.assertEqual(header, ["fecha", "variacion_mensual"])
-        self.assertEqual(rows, [["2024-05-01", "1.5"]])
+        self.assertEqual(header, ["fecha", "variacion_mensual", "source"])
+        self.assertEqual(rows, [["2024-05", "1.5", "official"], ["2024-06", "1.2", "backup"]])
         self.assertEqual(status["source"], custom_url)
+        self.assertEqual(status["fallback_source"], fallback_url)
+        self.assertTrue(status["used_backup"])
+        self.assertTrue(status["contains_unofficial"])
+        self.assertIn("2024-06", status["unofficial_months"])
 
     def test_invalid_api_response_uses_cache(self):
         rows = [["2024-05-01", "1.50"]]
