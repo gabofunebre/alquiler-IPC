@@ -8,6 +8,7 @@ from datetime import datetime, timezone, date
 from typing import Any, Iterable
 
 from . import config_service
+from .ipc_errors import translate_ipc_exception
 
 
 CACHE_PATH = os.path.join("config", "ipc.json")
@@ -284,6 +285,7 @@ def fetch_ipc_data():
         _write_meta(meta_to_store)
         return header, rows, status
     except (requests.RequestException, RuntimeError) as exc:
+        error_info = translate_ipc_exception(exc)
         if cache_exists:
             logger.warning(
                 "No se pudo actualizar el IPC: %s. Se utilizarán los datos cacheados.",
@@ -298,7 +300,7 @@ def fetch_ipc_data():
                     "used_cache": True,
                     "updated": False,
                     "stale": cache_is_stale,
-                    "error": str(exc),
+                    "error": error_info.to_dict(),
                 }
             )
             if cached_header is None or cached_rows is None:
