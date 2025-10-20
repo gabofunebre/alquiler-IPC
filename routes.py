@@ -45,6 +45,17 @@ def _format_ipc_status(status: dict | None) -> dict | None:
     if not status:
         return None
     formatted = status.copy()
+    unofficial_months_raw = formatted.get("unofficial_months")
+    unofficial_months: list[str] = []
+    if isinstance(unofficial_months_raw, (list, tuple, set)):
+        for item in unofficial_months_raw:
+            if not item:
+                continue
+            unofficial_months.append(str(item))
+    formatted["unofficial_months"] = sorted(set(unofficial_months))
+    formatted["contains_unofficial"] = bool(formatted["unofficial_months"])
+    if formatted["contains_unofficial"]:
+        formatted["unofficial_months_text"] = ", ".join(formatted["unofficial_months"])
     for key in ("last_cached_at", "last_checked_at"):
         value = formatted.get(key)
         if isinstance(value, datetime):
@@ -103,17 +114,25 @@ def ipc_ultimos():
         "stale": status.get("stale"),
         "error": status.get("error"),
     }
+    unofficial_months = status.get("unofficial_months") or []
+    cache_info["unofficial_months"] = list(unofficial_months)
+    cache_info["contains_unofficial"] = bool(unofficial_months)
+    if status.get("fallback_source"):
+        cache_info["fallback_source"] = status.get("fallback_source")
     if status.get("last_checked_at"):
         cache_info["last_checked_at"] = status["last_checked_at"].isoformat()
-    return jsonify(
-        {
-            "source": status.get("source") or get_api_url(),
-            "last_month": last_date,
-            "count": len(out),
-            "data": out,
-            "cache": cache_info,
-        }
-    )
+    response_payload = {
+        "source": status.get("source") or get_api_url(),
+        "last_month": last_date,
+        "count": len(out),
+        "data": out,
+        "cache": cache_info,
+    }
+    if unofficial_months:
+        response_payload["unofficial_months"] = list(unofficial_months)
+    if status.get("fallback_source"):
+        response_payload["fallback_source"] = status.get("fallback_source")
+    return jsonify(response_payload)
 
 
 @bp.route("/", methods=["GET", "POST"])
@@ -145,6 +164,13 @@ def index():
             meses = meses_hasta_fin_anio(inicio)
             ipc_data, ipc_status = ipc_dict_with_status()
             tabla = generar_tabla_alquiler(base, inicio, periodo, meses, ipc_data=ipc_data)
+            if ipc_status:
+                unofficial_months = set(ipc_status.get("unofficial_months") or [])
+                if unofficial_months:
+                    for fila in tabla:
+                        ym_value = fila.get("ym")
+                        if ym_value in unofficial_months:
+                            fila["provisorio"] = True
         except (InvalidOperation, ValueError) as exc:
             tabla_error = "Configuración inválida. Verificá los datos cargados."
             logger.warning("Configuración inválida para generar tabla de alquiler: %s", exc)
@@ -326,6 +352,13 @@ def admin():
                 tabla = generar_tabla_alquiler(
                     base, inicio, periodo, meses, ipc_data=ipc_data
                 )
+                if ipc_status:
+                    unofficial_months = set(ipc_status.get("unofficial_months") or [])
+                    if unofficial_months:
+                        for fila in tabla:
+                            ym_value = fila.get("ym")
+                            if ym_value in unofficial_months:
+                                fila["provisorio"] = True
             except (InvalidOperation, ValueError) as exc:
                 tabla_error = "Configuración inválida. Revisá los datos ingresados."
                 logger.warning("Configuración inválida en /adm: %s", exc)

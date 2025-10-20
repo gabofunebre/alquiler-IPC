@@ -314,10 +314,8 @@ def fetch_ipc_data():
         "last_modified_header": meta.get("last_modified"),
         "last_cached_at": _cache_last_modified(),
         "last_checked_at": None,
-        "used_backup": False,
-        "fallback_source": fallback_url,
-        "unofficial_months": unofficial_months,
-        "contains_unofficial": bool(unofficial_months),
+        "fallback_source": None,
+        "unofficial_months": [],
     }
 
     cached_header: list[str] | None = None
@@ -356,8 +354,7 @@ def fetch_ipc_data():
             status["last_cached_at"] = _cache_last_modified()
             status["used_cache"] = True
             status["stale"] = cache_is_stale
-            status["contains_unofficial"] = bool(unofficial_months)
-            status["used_backup"] = bool(unofficial_months)
+            status["contains_unofficial"] = bool(status.get("unofficial_months"))
             return cached_header, cached_rows, status
 
         response.raise_for_status()
@@ -478,7 +475,8 @@ def fetch_ipc_data():
             "fallback_source": fallback_url,
         }
         _write_meta(meta_to_store)
-        return header, combined_rows, status
+        status["contains_unofficial"] = bool(status.get("unofficial_months"))
+        return header, rows, status
     except (requests.RequestException, RuntimeError) as exc:
         error_info = translate_ipc_exception(exc)
         if cache_exists:
@@ -503,6 +501,7 @@ def fetch_ipc_data():
             )
             if cached_header is None or cached_rows is None:
                 raise
+            status["contains_unofficial"] = bool(status.get("unofficial_months"))
             return cached_header, cached_rows, status
         try:
             backup_rows = fetch_backup_ipc()
@@ -642,6 +641,16 @@ def ipc_dict_with_status():
     """Return IPC dictionary along with cache status metadata."""
     _, filas, status = fetch_ipc_data()
     out = _rows_to_monthly_variations(filas)
+    unofficial = status.get("unofficial_months") if isinstance(status, dict) else None
+    if unofficial is None:
+        unofficial_list: list[str] = []
+    elif isinstance(unofficial, list):
+        unofficial_list = [str(item) for item in unofficial if item]
+    else:
+        unofficial_list = [str(item) for item in unofficial if item] if isinstance(unofficial, (set, tuple)) else []
+    unofficial_list = sorted(set(unofficial_list))
+    status["unofficial_months"] = unofficial_list
+    status["contains_unofficial"] = bool(unofficial_list)
     return out, status
 
 

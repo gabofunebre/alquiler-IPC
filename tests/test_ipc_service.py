@@ -63,6 +63,10 @@ class FetchIpcDataTests(unittest.TestCase):
         self.assertEqual(rows, [[f"{current_month}-01", "1.50"]])
         self.assertTrue(status["used_cache"])
         self.assertFalse(status["stale"])
+        self.assertIn("unofficial_months", status)
+        self.assertEqual(status["unofficial_months"], [])
+        self.assertFalse(status.get("contains_unofficial"))
+        self.assertIn("fallback_source", status)
 
     def test_not_modified_reuses_cache_and_sends_conditionals(self):
         rows = [["2024-02-01", "1.50"]]
