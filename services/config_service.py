@@ -10,7 +10,14 @@ DEFAULT_API_URL = os.getenv(
     "IPC_API_URL",
     "https://apis.datos.gob.ar/series/api/series?ids=145.3_INGNACUAL_DICI_M_38&format=json&start_date=2016-01&limit=1000",
 )
-DEFAULT_GLOBAL_CONFIG = {"api_url": DEFAULT_API_URL}
+FALLBACK_API_URL = os.getenv(
+    "IPC_FALLBACK_API_URL",
+    "https://api.argentinadatos.com/v1/finanzas/indices/inflacion",
+)
+DEFAULT_GLOBAL_CONFIG = {
+    "api_url": DEFAULT_API_URL,
+    "fallback_api_url": FALLBACK_API_URL,
+}
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "admin")
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "..", "config", "config.json")
@@ -36,15 +43,16 @@ def _sanitize_global_config(data: Any) -> Dict[str, Any]:
 
     sanitized = {k: v for k, v in data.items() if k not in USER_CONFIG_KEYS}
 
-    api_url_value = sanitized.get("api_url")
-    if isinstance(api_url_value, str):
-        stripped = api_url_value.strip()
-        if stripped:
-            sanitized["api_url"] = stripped
-        else:
-            sanitized.pop("api_url", None)
-    elif "api_url" in sanitized:
-        sanitized.pop("api_url")
+    for key in ("api_url", "fallback_api_url"):
+        value = sanitized.get(key)
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped:
+                sanitized[key] = stripped
+            else:
+                sanitized.pop(key, None)
+        elif key in sanitized:
+            sanitized.pop(key)
 
     return sanitized
 
@@ -57,9 +65,10 @@ def _write_config(data: Dict[str, Any]) -> None:
     if isinstance(data, dict):
         to_store = DEFAULT_GLOBAL_CONFIG.copy()
         to_store.update(data)
-        api_url_value = to_store.get("api_url")
-        if isinstance(api_url_value, str):
-            to_store["api_url"] = api_url_value.strip()
+        for key in ("api_url", "fallback_api_url"):
+            value = to_store.get(key)
+            if isinstance(value, str):
+                to_store[key] = value.strip()
     else:
         to_store = data
     with open(path, "w", encoding="utf-8") as fh:
@@ -106,3 +115,13 @@ def get_api_url() -> str:
     if isinstance(api_url, str) and api_url.strip():
         return api_url.strip()
     return DEFAULT_API_URL
+
+
+def get_fallback_api_url() -> str:
+    """Return the configured IPC fallback API URL."""
+
+    config = load_config()
+    fallback_url = config.get("fallback_api_url")
+    if isinstance(fallback_url, str) and fallback_url.strip():
+        return fallback_url.strip()
+    return FALLBACK_API_URL
