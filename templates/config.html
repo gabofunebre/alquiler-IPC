@@ -146,17 +146,24 @@
     {% if ipc_status and ipc_status.last_cached_at_text %}
     <div class="text-end text-muted mb-2">Última actualización del IPC: {{ ipc_status.last_cached_at_text }}</div>
     {% endif %}
-    {% if ipc_status and ipc_status.error %}
+    {% if ipc_status and ipc_status.error_message %}
     <div class="alert alert-warning" role="alert">
-      <p class="mb-1">
-        No se pudo actualizar el IPC desde
-        {% if ipc_status.source %}{{ ipc_status.source }}{% else %}la fuente configurada{% endif %}.
-      </p>
-      <p class="mb-1">Motivo: {{ ipc_status.error }}.</p>
-      <p class="mb-0">
-        Se muestran los datos guardados del
-        {% if ipc_status.last_cached_at_text %}{{ ipc_status.last_cached_at_text }}{% else %}archivo en caché{% endif %}.
-      </p>
+      <div class="d-flex flex-column gap-2">
+        <div class="d-flex align-items-center gap-2">
+          {% if ipc_status.error_origin_label %}
+          <span class="badge {{ ipc_status.error_badge_class or 'bg-warning text-dark' }}">{{ ipc_status.error_origin_label }}</span>
+          {% endif %}
+          <span class="fw-semibold">No se pudo actualizar el IPC{% if ipc_status.source %} desde {{ ipc_status.source }}{% endif %}.</span>
+        </div>
+        <p class="mb-0">{{ ipc_status.error_message }}</p>
+        {% if ipc_status.error_detail %}
+        <p class="mb-0 small text-muted">Detalle técnico: {{ ipc_status.error_detail }}</p>
+        {% endif %}
+        <p class="mb-0">
+          Se muestran los datos guardados del
+          {% if ipc_status.last_cached_at_text %}{{ ipc_status.last_cached_at_text }}{% else %}archivo en caché{% endif %}.
+        </p>
+      </div>
     </div>
     {% endif %}
     <table class="table table-bordered">

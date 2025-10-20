@@ -131,7 +131,8 @@ class FetchIpcDataTests(unittest.TestCase):
         self.assertEqual(rows, [["2024-02-01", "1.50"]])
         self.assertTrue(status["used_cache"])
         self.assertTrue(status["stale"])
-        self.assertIsNotNone(status["error"])
+        self.assertIsInstance(status["error"], dict)
+        self.assertEqual(status["error"].get("code"), "request_error")
 
     def test_cache_considered_fresh_before_14th_with_two_month_gap(self):
         rows = [["2024-02-01", "1.50"]]
@@ -209,7 +210,8 @@ class FetchIpcDataTests(unittest.TestCase):
         self.assertEqual(header, ["fecha", "variacion_mensual"])
         self.assertEqual(cached_rows, rows)
         self.assertTrue(status["used_cache"])
-        self.assertIsNotNone(status["error"])
+        self.assertIsInstance(status["error"], dict)
+        self.assertEqual(status["error"].get("code"), "invalid_response")
 
     def test_get_cache_status_without_cache(self):
         info = ipc_service.get_cache_status()
