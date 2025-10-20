@@ -45,6 +45,15 @@
       </div>
     </div>
     {% endif %}
+    {% if ipc_status and ipc_status.contains_unofficial %}
+    <div class="alert alert-info" role="alert">
+      <p class="mb-1">
+        Algunos meses del IPC se completaron con una fuente secundaria
+        {% if ipc_status.fallback_source %}({{ ipc_status.fallback_source }}){% endif %}.
+      </p>
+      <p class="mb-0"><strong>Meses alcanzados:</strong> {{ ipc_status.unofficial_months_text or ipc_status.unofficial_months|join(', ') }}</p>
+    </div>
+    {% endif %}
     <div class="text-end mb-2">Fecha de hoy: {{ fecha_hoy }}</div>
     {% if ipc_status and ipc_status.last_cached_at_text %}
     <div class="text-end text-muted mb-2">Última actualización del IPC: {{ ipc_status.last_cached_at_text }}</div>
