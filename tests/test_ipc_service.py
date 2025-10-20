@@ -217,6 +217,98 @@ class FetchIpcDataTests(unittest.TestCase):
         self.assertIsInstance(status["error"], dict)
         self.assertEqual(status["error"].get("code"), "invalid_response")
 
+    def test_backup_used_when_primary_request_fails(self):
+        backup_rows = [["2024-07-01", "0.021"], ["2024-08-01", "0.022"]]
+        backup_info = {"unofficial_months": ["2024-07", "2024-08"]}
+
+        with mock.patch.object(
+            ipc_service.requests,
+            "get",
+            side_effect=requests.RequestException("timeout"),
+        ), mock.patch.object(
+            ipc_service,
+            "fetch_backup_ipc",
+            return_value=(["fecha", "variacion_mensual"], backup_rows, backup_info),
+            create=True,
+        ):
+            header, rows, status = ipc_service.fetch_ipc_data()
+
+        self.assertEqual(header, ["fecha", "variacion_mensual"])
+        self.assertEqual(rows, backup_rows)
+        self.assertTrue(status["used_backup"])
+        self.assertTrue(status["contains_unofficial"])
+        self.assertEqual(status["unofficial_months"], ["2024-07", "2024-08"])
+
+        with open(self.cache_path, "r", encoding="utf-8") as fh:
+            cached_payload = json.load(fh)
+
+        self.assertEqual(cached_payload.get("rows"), backup_rows)
+
+        with open(self.meta_path, "r", encoding="utf-8") as fh:
+            meta = json.load(fh)
+
+        self.assertEqual(meta.get("unofficial_months"), ["2024-07", "2024-08"])
+
+    def test_official_update_clears_unofficial_metadata(self):
+        backup_rows = [["2024-07-01", "0.021"], ["2024-08-01", "0.022"]]
+        backup_info = {"unofficial_months": ["2024-07", "2024-08"]}
+
+        success_response = mock.Mock()
+        success_response.status_code = 200
+        success_response.headers = {}
+        success_response.raise_for_status = mock.Mock()
+        success_response.json.return_value = {
+            "data": [
+                ["2024-07-01", "0.021"],
+                ["2024-08-01", "0.022"],
+                ["2024-09-01", "0.023"],
+            ]
+        }
+
+        request_side_effects = [
+            requests.RequestException("boom"),
+            success_response,
+        ]
+
+        backup_side_effects = [
+            (["fecha", "variacion_mensual"], backup_rows, backup_info),
+            AssertionError("fetch_backup_ipc should not be called on success"),
+        ]
+
+        with mock.patch.object(
+            ipc_service.requests, "get", side_effect=request_side_effects
+        ) as mocked_get, mock.patch.object(
+            ipc_service,
+            "fetch_backup_ipc",
+            side_effect=backup_side_effects,
+            create=True,
+        ) as mocked_backup:
+            header_backup, rows_backup, status_backup = ipc_service.fetch_ipc_data()
+            header_success, rows_success, status_success = ipc_service.fetch_ipc_data()
+
+        self.assertEqual(header_backup, ["fecha", "variacion_mensual"])
+        self.assertEqual(rows_backup, backup_rows)
+        self.assertTrue(status_backup["used_backup"])
+        self.assertTrue(status_backup["contains_unofficial"])
+        self.assertEqual(status_backup["unofficial_months"], ["2024-07", "2024-08"])
+
+        self.assertEqual(header_success, ["fecha", "variacion_mensual"])
+        self.assertEqual(
+            rows_success,
+            [["2024-07-01", "0.021"], ["2024-08-01", "0.022"], ["2024-09-01", "0.023"]],
+        )
+        self.assertFalse(status_success["used_backup"])
+        self.assertFalse(status_success["contains_unofficial"])
+        self.assertEqual(status_success["unofficial_months"], [])
+
+        self.assertEqual(mocked_get.call_count, 2)
+        self.assertEqual(mocked_backup.call_count, 1)
+
+        with open(self.meta_path, "r", encoding="utf-8") as fh:
+            meta = json.load(fh)
+
+        self.assertNotIn("unofficial_months", meta)
+
     def test_get_cache_status_without_cache(self):
         info = ipc_service.get_cache_status()
         self.assertFalse(info["has_cache"])
@@ -263,6 +355,12 @@ class ParsingTests(unittest.TestCase):
         self.assertIn("2024-05", parsed)
         self.assertEqual(parsed["2024-05"], Decimal("0.015"))
         self.assertIn("2024-06", parsed)
+        self.assertEqual(parsed["2024-06"], Decimal("0.016"))
+
+    def test_rows_to_variations_ignore_extra_columns(self):
+        rows = [["2024-05-01", "0.015", "backup"], ["2024-06-01", "0.016", "oficial"]]
+        parsed = ipc_service._rows_to_monthly_variations(rows)
+        self.assertEqual(parsed["2024-05"], Decimal("0.015"))
         self.assertEqual(parsed["2024-06"], Decimal("0.016"))
 
 if __name__ == "__main__":
