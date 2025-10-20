@@ -148,8 +148,15 @@
     {% endif %}
     {% if ipc_status and ipc_status.error %}
     <div class="alert alert-warning" role="alert">
-      No se pudo actualizar el IPC. Se muestran los datos guardados del
-      {% if ipc_status.last_cached_at_text %}{{ ipc_status.last_cached_at_text }}{% else %}archivo en caché{% endif %}.
+      <p class="mb-1">
+        No se pudo actualizar el IPC desde
+        {% if ipc_status.source %}{{ ipc_status.source }}{% else %}la fuente configurada{% endif %}.
+      </p>
+      <p class="mb-1">Motivo: {{ ipc_status.error }}.</p>
+      <p class="mb-0">
+        Se muestran los datos guardados del
+        {% if ipc_status.last_cached_at_text %}{{ ipc_status.last_cached_at_text }}{% else %}archivo en caché{% endif %}.
+      </p>
     </div>
     {% endif %}
     <table class="table table-bordered">
