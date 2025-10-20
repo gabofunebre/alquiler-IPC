@@ -22,6 +22,7 @@ from services.config_service import (
     ADMIN_PASS,
     get_api_url,
 )
+from services.ipc_errors import translate_ipc_exception
 from services.ipc_service import (
     ipc_dict_with_status,
     get_cache_status,
@@ -40,52 +41,6 @@ bp = Blueprint("app", __name__)
 logger = logging.getLogger(__name__)
 
 
-def _describe_ipc_error(exc: Exception) -> str:
-    """Return a user friendly message for IPC related errors."""
-
-    if isinstance(exc, requests.Timeout):
-        return (
-            "El servidor del INDEC tardó demasiado en responder. "
-            "Intentá nuevamente más tarde."
-        )
-
-    if isinstance(exc, requests.ConnectionError):
-        return (
-            "No se pudo conectar con el servidor del INDEC para obtener los datos del IPC. "
-            "Verificá tu conexión e intentá nuevamente."
-        )
-
-    if isinstance(exc, requests.HTTPError):
-        response = exc.response
-        if response is not None:
-            reason = response.reason or ""
-            status_code = response.status_code
-            detail = str(status_code)
-            if reason:
-                detail = f"{detail} {reason}"
-            return (
-                f"El servidor del INDEC respondió con un error ({detail}). "
-                "Intentá nuevamente más tarde."
-            )
-        return (
-            "El servidor del INDEC respondió con un error desconocido. "
-            "Intentá nuevamente más tarde."
-        )
-
-    if isinstance(exc, requests.RequestException):
-        return (
-            f"No se pudo obtener el IPC desde el servidor del INDEC ({exc}). "
-            "Intentá nuevamente más tarde."
-        )
-
-    if isinstance(exc, RuntimeError):
-        return (
-            f"Los datos recibidos del servidor del INDEC son inválidos ({exc}). "
-            "Intentá nuevamente más tarde."
-        )
-
-    return "Error cargando IPC. Intentá nuevamente más tarde."
-
 def _format_ipc_status(status: dict | None) -> dict | None:
     if not status:
         return None
@@ -94,6 +49,16 @@ def _format_ipc_status(status: dict | None) -> dict | None:
         value = formatted.get(key)
         if isinstance(value, datetime):
             formatted[f"{key}_text"] = value.astimezone().strftime("%d-%m-%Y %H:%M %Z")
+    error_info = formatted.get("error")
+    if isinstance(error_info, dict):
+        formatted["error_message"] = error_info.get("message")
+        formatted["error_code"] = error_info.get("code")
+        formatted["error_origin"] = error_info.get("origin")
+        formatted["error_origin_label"] = error_info.get("origin_label")
+        formatted["error_badge_class"] = error_info.get("badge_class")
+        formatted["error_detail"] = error_info.get("detail")
+    elif isinstance(error_info, str):
+        formatted["error_message"] = error_info
     return formatted
 
 
@@ -183,12 +148,9 @@ def index():
         except (InvalidOperation, ValueError) as exc:
             tabla_error = "Configuración inválida. Verificá los datos cargados."
             logger.warning("Configuración inválida para generar tabla de alquiler: %s", exc)
-        except requests.RequestException as exc:
-            logger.exception("Error al solicitar el IPC")
-            tabla_error = _describe_ipc_error(exc)
-        except RuntimeError as exc:
-            logger.exception("Error al procesar datos del IPC")
-            tabla_error = _describe_ipc_error(exc)
+        except (requests.RequestException, RuntimeError) as exc:
+            logger.exception("Error al obtener datos del IPC")
+            tabla_error = translate_ipc_exception(exc).message
         except Exception as exc:
             logger.exception("Error generando tabla de alquiler")
             tabla_error = "Ocurrió un error inesperado al generar la tabla. Intentá nuevamente más tarde."
@@ -367,6 +329,9 @@ def admin():
             except (InvalidOperation, ValueError) as exc:
                 tabla_error = "Configuración inválida. Revisá los datos ingresados."
                 logger.warning("Configuración inválida en /adm: %s", exc)
+            except (requests.RequestException, RuntimeError) as exc:
+                logger.exception("Error al obtener datos del IPC en /adm")
+                tabla_error = translate_ipc_exception(exc).message
             except Exception as exc:
                 logger.exception("Error generando tabla de alquiler en /adm")
                 tabla_error = "Error cargando IPC. Intentá nuevamente más tarde."
