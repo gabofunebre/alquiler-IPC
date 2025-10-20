@@ -1,6 +1,8 @@
 import logging
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
+import requests
 from flask import (
     Blueprint,
     jsonify,
@@ -36,6 +38,53 @@ from services.user_service import (
 
 bp = Blueprint("app", __name__)
 logger = logging.getLogger(__name__)
+
+
+def _describe_ipc_error(exc: Exception) -> str:
+    """Return a user friendly message for IPC related errors."""
+
+    if isinstance(exc, requests.Timeout):
+        return (
+            "El servidor del INDEC tardó demasiado en responder. "
+            "Intentá nuevamente más tarde."
+        )
+
+    if isinstance(exc, requests.ConnectionError):
+        return (
+            "No se pudo conectar con el servidor del INDEC para obtener los datos del IPC. "
+            "Verificá tu conexión e intentá nuevamente."
+        )
+
+    if isinstance(exc, requests.HTTPError):
+        response = exc.response
+        if response is not None:
+            reason = response.reason or ""
+            status_code = response.status_code
+            detail = str(status_code)
+            if reason:
+                detail = f"{detail} {reason}"
+            return (
+                f"El servidor del INDEC respondió con un error ({detail}). "
+                "Intentá nuevamente más tarde."
+            )
+        return (
+            "El servidor del INDEC respondió con un error desconocido. "
+            "Intentá nuevamente más tarde."
+        )
+
+    if isinstance(exc, requests.RequestException):
+        return (
+            f"No se pudo obtener el IPC desde el servidor del INDEC ({exc}). "
+            "Intentá nuevamente más tarde."
+        )
+
+    if isinstance(exc, RuntimeError):
+        return (
+            f"Los datos recibidos del servidor del INDEC son inválidos ({exc}). "
+            "Intentá nuevamente más tarde."
+        )
+
+    return "Error cargando IPC. Intentá nuevamente más tarde."
 
 def _format_ipc_status(status: dict | None) -> dict | None:
     if not status:
@@ -134,9 +183,15 @@ def index():
         except (InvalidOperation, ValueError) as exc:
             tabla_error = "Configuración inválida. Verificá los datos cargados."
             logger.warning("Configuración inválida para generar tabla de alquiler: %s", exc)
+        except requests.RequestException as exc:
+            logger.exception("Error al solicitar el IPC")
+            tabla_error = _describe_ipc_error(exc)
+        except RuntimeError as exc:
+            logger.exception("Error al procesar datos del IPC")
+            tabla_error = _describe_ipc_error(exc)
         except Exception as exc:
             logger.exception("Error generando tabla de alquiler")
-            tabla_error = "Error cargando IPC. Intentá nuevamente más tarde."
+            tabla_error = "Ocurrió un error inesperado al generar la tabla. Intentá nuevamente más tarde."
 
     return render_template(
         "index.html",
