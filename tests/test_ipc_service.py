@@ -131,7 +131,7 @@ class FetchIpcDataTests(unittest.TestCase):
             ) as mocked_get:
                 header, rows, status = ipc_service.fetch_ipc_data()
 
-        mocked_get.assert_called_once()
+        self.assertEqual(mocked_get.call_count, 2)
         self.assertEqual(header, ["fecha", "variacion_mensual"])
         self.assertEqual(rows, [["2024-02-01", "1.50"]])
         self.assertTrue(status["used_cache"])
@@ -157,6 +157,43 @@ class FetchIpcDataTests(unittest.TestCase):
         self.assertEqual(rows, [["2024-02-01", "1.50"]])
         self.assertTrue(status["used_cache"])
         self.assertFalse(status["stale"])
+
+    def test_fetch_backup_ipc_merges_with_cache_rows(self):
+        cache_rows = [["2024-07-01", "0.018", "official"]]
+        fallback_payload = [
+            {"fecha": "2024-08-31", "valor": 1.9},
+            {"fecha": "2024-09-30", "valor": 2.1},
+        ]
+
+        fake_response = mock.Mock()
+        fake_response.raise_for_status = mock.Mock()
+        fake_response.json.return_value = fallback_payload
+        fake_response.headers = {
+            "ETag": "W/\"123\"",
+            "Last-Modified": "Wed, 01 Jan 2025 00:00:00 GMT",
+        }
+
+        with mock.patch.object(ipc_service.requests, "get", return_value=fake_response) as mocked_get:
+            header, rows, info = ipc_service.fetch_backup_ipc(cache_rows=cache_rows)
+
+        mocked_get.assert_called_once_with(
+            ipc_service.config_service.get_fallback_api_url(), timeout=20
+        )
+        self.assertEqual(header, ["fecha", "variacion_mensual", "source"])
+        self.assertEqual(
+            rows,
+            [
+                ["2024-07", "0.018", "official"],
+                ["2024-08", "0.019", "backup"],
+                ["2024-09", "0.021", "backup"],
+            ],
+        )
+        self.assertEqual(info.get("unofficial_months"), ["2024-08", "2024-09"])
+        self.assertEqual(
+            info.get("fallback_source"), ipc_service.config_service.get_fallback_api_url()
+        )
+        self.assertEqual(info.get("etag"), "W/\"123\"")
+        self.assertEqual(info.get("last_modified"), "Wed, 01 Jan 2025 00:00:00 GMT")
 
     def test_fetch_ipc_data_uses_configured_url(self):
         custom_url = "https://example.com/custom-ipc.json"
@@ -192,7 +229,7 @@ class FetchIpcDataTests(unittest.TestCase):
         called_url = mocked_get.call_args_list[0].args[0]
         self.assertEqual(called_url, custom_url)
         self.assertEqual(header, ["fecha", "variacion_mensual", "source"])
-        self.assertEqual(rows, [["2024-05", "1.5", "official"], ["2024-06", "1.2", "backup"]])
+        self.assertEqual(rows, [["2024-05", "1.5", "official"], ["2024-06", "0.012", "backup"]])
         self.assertEqual(status["source"], custom_url)
         self.assertEqual(status["fallback_source"], fallback_url)
         self.assertTrue(status["used_backup"])

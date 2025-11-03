@@ -70,6 +70,16 @@ def _format_ipc_status(status: dict | None) -> dict | None:
         formatted["error_detail"] = error_info.get("detail")
     elif isinstance(error_info, str):
         formatted["error_message"] = error_info
+    used_backup = bool(formatted.get("used_backup"))
+    formatted["used_backup"] = used_backup
+    if used_backup:
+        formatted["display_message"] = (
+            "Datos oficiales no accesibles, se utilizan datos de respaldo."
+        )
+        formatted["display_class"] = "alert-warning"
+    else:
+        formatted["display_message"] = "Datos utilizados de fuentes gubernamentales."
+        formatted["display_class"] = "alert-success"
     return formatted
 
 
