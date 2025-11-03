@@ -22,9 +22,6 @@ def fetch_backup_ipc(
 ) -> tuple[list[str], list[list[str]], dict[str, Any]]:
     """Fetch IPC data from a backup source."""
 
-    if cache_rows is not None:
-        raise RuntimeError("Fuente de respaldo no disponible")
-
     fallback_url = config_service.get_fallback_api_url()
     if not fallback_url:
         raise RuntimeError("Fuente de respaldo no disponible")
@@ -36,34 +33,69 @@ def fetch_backup_ipc(
     except ValueError as exc:  # pragma: no cover - defensive guard
         raise RuntimeError("Respuesta del IPC de respaldo inválida") from exc
 
-    rows: list[list[str]] = []
+    raw_items: list[Any] = []
     if isinstance(payload, dict):
-        data = payload.get("data")
-        if isinstance(data, list):
-            payload = data
-    if isinstance(payload, list):
-        for item in payload:
-            fecha_raw = None
-            valor_raw = None
-            if isinstance(item, dict):
-                fecha_raw = item.get("fecha") or item.get("date")
-                valor_raw = item.get("valor") or item.get("value")
-            elif isinstance(item, (list, tuple)) and len(item) >= 2:
-                fecha_raw, valor_raw = item[0], item[1]
-            if fecha_raw in (None, "") or valor_raw in (None, ""):
-                continue
-            fecha_norm = parse_fechas(str(fecha_raw))
-            try:
-                valor_dec = Decimal(str(valor_raw))
-            except (InvalidOperation, ValueError):
-                continue
-            rows.append([fecha_norm, format(valor_dec, "f"), "backup"])
+        for key in ("data", "results", "series", "serie", "items"):
+            value = payload.get(key) if isinstance(payload, dict) else None
+            if isinstance(value, list):
+                raw_items = value
+                break
+        else:
+            raw_items = [payload]
+    elif isinstance(payload, list):
+        raw_items = payload
 
-    if not rows:
+    fallback_map: dict[str, list[str]] = {}
+    for item in raw_items:
+        fecha_raw = None
+        valor_raw = None
+        if isinstance(item, dict):
+            fecha_raw = item.get("fecha") or item.get("date")
+            valor_raw = item.get("valor") or item.get("value")
+        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+            fecha_raw, valor_raw = item[0], item[1]
+        if fecha_raw in (None, "") or valor_raw in (None, ""):
+            continue
+        fecha_norm = parse_fechas(str(fecha_raw))
+        if not fecha_norm:
+            continue
+        try:
+            valor_dec = Decimal(str(valor_raw))
+        except (InvalidOperation, ValueError):
+            continue
+        fallback_map[fecha_norm] = [fecha_norm, format(valor_dec, "f"), "backup"]
+
+    if not fallback_map:
         raise RuntimeError("Fuente de respaldo no disponible")
 
-    unofficial_months = [row[0] for row in rows if row and row[0]]
+    combined_map: dict[str, list[str]] = {}
+    if cache_rows:
+        for row in cache_rows:
+            normalized = _normalize_cached_row(row)
+            if not normalized:
+                continue
+            combined_map[normalized[0]] = normalized
+
+    combined_map.update(fallback_map)
+
+    months_sorted = sorted(combined_map.keys(), key=lambda m: (_month_key(m) or 0, m))
+    rows: list[list[str]] = [
+        [
+            str(combined_map[month][0]),
+            str(combined_map[month][1]),
+            str(combined_map[month][2]) if len(combined_map[month]) > 2 else "official",
+        ]
+        for month in months_sorted
+    ]
+
+    unofficial_months = sorted(fallback_map.keys())
     info = {"unofficial_months": unofficial_months, "fallback_source": fallback_url}
+    etag = response.headers.get("ETag")
+    if etag:
+        info["etag"] = etag
+    last_modified = response.headers.get("Last-Modified")
+    if last_modified:
+        info["last_modified"] = last_modified
 
     header = ["fecha", "variacion_mensual", "source"]
     return header, rows, info
