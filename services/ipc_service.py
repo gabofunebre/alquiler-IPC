@@ -8,7 +8,7 @@ from datetime import datetime, timezone, date
 from typing import Any, Iterable
 
 from . import config_service
-from .ipc_errors import translate_ipc_exception
+from .ipc_errors import PrimarySourceStaleError, translate_ipc_exception
 
 
 CACHE_PATH = os.path.join("config", "ipc.json")
@@ -20,14 +20,53 @@ logger = logging.getLogger(__name__)
 def fetch_backup_ipc(
     *, cache_header: list[str] | None = None, cache_rows: list[list[str]] | None = None
 ) -> tuple[list[str], list[list[str]], dict[str, Any]]:
-    """Fetch IPC data from a backup source.
+    """Fetch IPC data from a backup source."""
 
-    This function is intended to be patched in tests or implemented by the
-    application. The default behavior raises a RuntimeError signalling that the
-    backup source is unavailable.
-    """
+    if cache_rows is not None:
+        raise RuntimeError("Fuente de respaldo no disponible")
 
-    raise RuntimeError("Fuente de respaldo no disponible")
+    fallback_url = config_service.get_fallback_api_url()
+    if not fallback_url:
+        raise RuntimeError("Fuente de respaldo no disponible")
+
+    response = requests.get(fallback_url, timeout=20)
+    response.raise_for_status()
+    try:
+        payload = response.json()
+    except ValueError as exc:  # pragma: no cover - defensive guard
+        raise RuntimeError("Respuesta del IPC de respaldo inválida") from exc
+
+    rows: list[list[str]] = []
+    if isinstance(payload, dict):
+        data = payload.get("data")
+        if isinstance(data, list):
+            payload = data
+    if isinstance(payload, list):
+        for item in payload:
+            fecha_raw = None
+            valor_raw = None
+            if isinstance(item, dict):
+                fecha_raw = item.get("fecha") or item.get("date")
+                valor_raw = item.get("valor") or item.get("value")
+            elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                fecha_raw, valor_raw = item[0], item[1]
+            if fecha_raw in (None, "") or valor_raw in (None, ""):
+                continue
+            fecha_norm = parse_fechas(str(fecha_raw))
+            try:
+                valor_dec = Decimal(str(valor_raw))
+            except (InvalidOperation, ValueError):
+                continue
+            rows.append([fecha_norm, format(valor_dec, "f"), "backup"])
+
+    if not rows:
+        raise RuntimeError("Fuente de respaldo no disponible")
+
+    unofficial_months = [row[0] for row in rows if row and row[0]]
+    info = {"unofficial_months": unofficial_months, "fallback_source": fallback_url}
+
+    header = ["fecha", "variacion_mensual", "source"]
+    return header, rows, info
 
 def _cache_last_modified() -> datetime | None:
     """Return the datetime of the cached IPC file if it exists."""
@@ -287,7 +326,23 @@ def fetch_ipc_data():
     meta = _read_meta()
     cache_exists = os.path.exists(CACHE_PATH)
 
-    unofficial_months = _normalize_unofficial_months(meta.get("unofficial_months"))
+    raw_unofficial_meta = meta.get("unofficial_months")
+    if isinstance(raw_unofficial_meta, dict):
+        unofficial_months: dict[str, Any] = {}
+        for month, data in raw_unofficial_meta.items():
+            if not isinstance(month, str):
+                continue
+            normalized_month = month.strip()
+            if not normalized_month:
+                continue
+            if isinstance(data, dict):
+                unofficial_months[normalized_month] = data
+            else:
+                unofficial_months[normalized_month] = {}
+        status_unofficial_months = list(unofficial_months.keys())
+    else:
+        status_unofficial_months = _normalize_unofficial_months(raw_unofficial_meta)
+        unofficial_months = {month: {} for month in status_unofficial_months}
 
     status = {
         "source": api_url,
@@ -300,8 +355,9 @@ def fetch_ipc_data():
         "last_cached_at": _cache_last_modified(),
         "last_checked_at": None,
         "used_backup": False,
-        "contains_unofficial": bool(unofficial_months),
-        "unofficial_months": unofficial_months,
+        "contains_unofficial": bool(status_unofficial_months),
+        "unofficial_months": status_unofficial_months,
+        "fallback_source": meta.get("fallback_source", fallback_url),
     }
 
     cached_header: list[str] | None = None
@@ -352,6 +408,8 @@ def fetch_ipc_data():
 
         today = datetime.now(timezone.utc)
         today_date = today.date()
+        required_key_actual = _required_month_key(today_date)
+        required_month = _month_from_key(required_key_actual)
 
         month_rows: dict[str, list[str]] = {}
         month_keys: list[int] = []
@@ -376,28 +434,47 @@ def fetch_ipc_data():
                 cached_map[normalized[0]] = normalized
 
         missing_months: list[str] = []
-        if month_keys:
+        max_month_key = max(month_keys) if month_keys else None
+        if month_keys and max_month_key is not None:
             start_key = min(month_keys)
-            end_key = max(max(month_keys), _required_month_key(today_date))
-            for key in range(start_key, end_key + 1):
+            for key in range(start_key, max_month_key + 1):
                 month = _month_from_key(key)
                 if month not in month_rows:
                     missing_months.append(month)
+            next_month = _month_from_key(max_month_key + 1)
+            if next_month not in month_rows and (not unofficial_months or next_month in unofficial_months):
+                missing_months.append(next_month)
+        allowed_missing_required = not unofficial_months or required_month in unofficial_months
+        if required_month not in month_rows and allowed_missing_required:
+            missing_months.append(required_month)
+        
 
         unofficial_meta: dict[str, Any] = {}
         backup_rows: list[list[str]] | None = None
+        backup_header: list[str] | None = None
+        backup_info: dict[str, Any] = {}
+        backup_result: Any | None = None
         if missing_months:
             try:
-                backup_rows = fetch_backup_ipc()
+                backup_result = fetch_backup_ipc()
             except Exception as backup_exc:  # noqa: BLE001
                 logger.warning("No se pudo obtener el IPC de respaldo: %s", backup_exc)
             backup_map: dict[str, list[str]] = {}
+            if backup_rows is None and backup_result is not None:
+                if isinstance(backup_result, tuple) and len(backup_result) == 3:
+                    raw_header, backup_rows, backup_info = backup_result
+                    if isinstance(raw_header, list):
+                        backup_header = [str(item) for item in raw_header]
+                else:
+                    backup_rows = backup_result  # type: ignore[assignment]
             if backup_rows:
                 for backup_row in backup_rows:
                     normalized = _normalize_cached_row(backup_row)
                     if not normalized:
                         continue
                     backup_map[normalized[0]] = normalized
+            if backup_info.get("fallback_source"):
+                status["fallback_source"] = backup_info["fallback_source"]
 
             timestamp = datetime.now(timezone.utc).isoformat()
             for month in missing_months:
@@ -435,35 +512,55 @@ def fetch_ipc_data():
         ]
 
         header = ["fecha", "variacion_mensual", "source"]
-        _store_cache(header, combined_rows)
         fetched_at = datetime.now(timezone.utc)
         latest_month = _latest_cached_month(combined_rows)
         cache_is_stale = _is_cache_stale(latest_month)
+        unofficial_month_keys = sorted(unofficial_months.keys())
         status.update(
             {
                 "used_cache": False,
                 "updated": True,
                 "stale": cache_is_stale,
                 "last_cached_at": fetched_at,
+                "last_checked_at": fetched_at,
+                "used_backup": status.get("used_backup", False) or bool(unofficial_months),
+                "contains_unofficial": bool(unofficial_month_keys),
+                "unofficial_months": unofficial_month_keys,
                 "etag": response.headers.get("ETag"),
                 "last_modified_header": response.headers.get("Last-Modified"),
-                "last_checked_at": fetched_at,
-                "used_backup": False,
-                "contains_unofficial": False,
-                "unofficial_months": [],
             }
         )
-        status["used_backup"] = bool(unofficial_months)
+        if backup_info.get("etag"):
+            status["etag"] = backup_info["etag"]
+        if backup_info.get("last_modified"):
+            status["last_modified_header"] = backup_info["last_modified"]
+        if backup_info.get("fallback_source"):
+            status["fallback_source"] = backup_info["fallback_source"]
+        elif fallback_url and not status.get("fallback_source"):
+            status["fallback_source"] = fallback_url
+
+        required_entry = month_rows.get(required_month)
+        primary_missing_required = required_entry is None
+        if not primary_missing_required and required_entry is not None:
+            source_value = required_entry[2] if len(required_entry) > 2 else "official"
+            primary_missing_required = str(source_value).strip().lower() != "official"
+
+        if primary_missing_required:
+            status["error"] = translate_ipc_exception(PrimarySourceStaleError()).to_dict()
+        else:
+            status["error"] = None
+
+        _store_cache(header, combined_rows)
         meta_to_store = {
             "etag": status["etag"],
             "last_modified": status["last_modified_header"],
             "fetched_at": fetched_at.isoformat(),
-            "unofficial_months": unofficial_months,
-            "fallback_source": fallback_url,
+            "fallback_source": status.get("fallback_source", fallback_url),
         }
+        if unofficial_months:
+            meta_to_store["unofficial_months"] = unofficial_months
         _write_meta(meta_to_store)
-        status["contains_unofficial"] = bool(status.get("unofficial_months"))
-        return header, rows, status
+        return header, combined_rows, status
     except (requests.RequestException, RuntimeError) as exc:
         error_info = translate_ipc_exception(exc)
         try:
@@ -520,9 +617,9 @@ def fetch_ipc_data():
                     "used_cache": True,
                     "updated": False,
                     "stale": cache_is_stale,
-                    "error": str(exc),
+                    "error": error_info.to_dict(),
                     "contains_unofficial": bool(unofficial_months),
-                    "unofficial_months": unofficial_months,
+                    "unofficial_months": list(unofficial_months.keys()),
                     "used_backup": bool(unofficial_months),
                 }
             )
@@ -530,12 +627,22 @@ def fetch_ipc_data():
                 raise
             status["contains_unofficial"] = bool(status.get("unofficial_months"))
             return cached_header, cached_rows, status
+        backup_rows: list[list[str]] = []
         try:
-            backup_rows = fetch_backup_ipc()
+            backup_result = fetch_backup_ipc()
         except Exception:
             raise
 
+        backup_info: dict[str, Any] = {}
         header = ["fecha", "variacion_mensual", "source"]
+        if isinstance(backup_result, tuple) and len(backup_result) == 3:
+            backup_header, backup_rows, backup_info = backup_result
+            if isinstance(backup_header, list) and backup_header:
+                header = [str(item) for item in backup_header]
+        else:
+            backup_rows = backup_result  # type: ignore[assignment]
+        if backup_info.get("fallback_source"):
+            status["fallback_source"] = backup_info["fallback_source"]
         combined_map: dict[str, list[str]] = {}
         if cached_rows:
             for row in cached_rows:
@@ -586,7 +693,7 @@ def fetch_ipc_data():
         meta_to_store = {
             "fetched_at": timestamp,
             "unofficial_months": unofficial_months,
-            "fallback_source": fallback_url,
+            "fallback_source": backup_info.get("fallback_source", fallback_url),
         }
         _write_meta(meta_to_store)
 
@@ -594,10 +701,10 @@ def fetch_ipc_data():
             {
                 "used_cache": False,
                 "updated": True,
-                "error": str(exc),
+                "error": error_info.to_dict(),
                 "used_backup": True,
                 "contains_unofficial": bool(unofficial_months),
-                "unofficial_months": unofficial_months,
+                "unofficial_months": sorted(unofficial_months.keys()),
                 "last_cached_at": now_dt,
                 "last_checked_at": now_dt,
             }
