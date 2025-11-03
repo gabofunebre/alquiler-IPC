@@ -63,7 +63,8 @@ def fetch_backup_ipc(
             valor_dec = Decimal(str(valor_raw))
         except (InvalidOperation, ValueError):
             continue
-        fallback_map[fecha_norm] = [fecha_norm, format(valor_dec, "f"), "backup"]
+        valor_dec = valor_dec / Decimal("100")
+        fallback_map[fecha_norm] = [fecha_norm, format(valor_dec.normalize(), "f"), "backup"]
 
     if not fallback_map:
         raise RuntimeError("Fuente de respaldo no disponible")

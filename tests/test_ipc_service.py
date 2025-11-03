@@ -184,8 +184,8 @@ class FetchIpcDataTests(unittest.TestCase):
             rows,
             [
                 ["2024-07", "0.018", "official"],
-                ["2024-08", "1.9", "backup"],
-                ["2024-09", "2.1", "backup"],
+                ["2024-08", "0.019", "backup"],
+                ["2024-09", "0.021", "backup"],
             ],
         )
         self.assertEqual(info.get("unofficial_months"), ["2024-08", "2024-09"])
@@ -229,7 +229,7 @@ class FetchIpcDataTests(unittest.TestCase):
         called_url = mocked_get.call_args_list[0].args[0]
         self.assertEqual(called_url, custom_url)
         self.assertEqual(header, ["fecha", "variacion_mensual", "source"])
-        self.assertEqual(rows, [["2024-05", "1.5", "official"], ["2024-06", "1.2", "backup"]])
+        self.assertEqual(rows, [["2024-05", "1.5", "official"], ["2024-06", "0.012", "backup"]])
         self.assertEqual(status["source"], custom_url)
         self.assertEqual(status["fallback_source"], fallback_url)
         self.assertTrue(status["used_backup"])

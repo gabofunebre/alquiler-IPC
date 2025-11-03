@@ -25,33 +25,9 @@
     <div class="alert alert-danger" role="alert">{{ tabla_error }}</div>
     {% endif %}
     {% if tabla %}
-    {% if ipc_status and ipc_status.error_message %}
-    <div class="alert alert-warning" role="alert">
-      <div class="d-flex flex-column gap-2">
-        <div class="d-flex align-items-center gap-2">
-          {% if ipc_status.error_origin_label %}
-          <span class="badge {{ ipc_status.error_badge_class or 'bg-warning text-dark' }}">{{ ipc_status.error_origin_label }}</span>
-          {% endif %}
-          <span class="fw-semibold">No se pudo actualizar el IPC{% if ipc_status.source %} desde {{ ipc_status.source }}{% endif %}.</span>
-        </div>
-        <p class="mb-0">{{ ipc_status.error_message }}</p>
-        {% if ipc_status.error_detail %}
-        <p class="mb-0 small text-muted">Detalle técnico: {{ ipc_status.error_detail }}</p>
-        {% endif %}
-        <p class="mb-0">
-          Se muestran los datos guardados del
-          {% if ipc_status.last_cached_at_text %}{{ ipc_status.last_cached_at_text }}{% else %}archivo en caché{% endif %}.
-        </p>
-      </div>
-    </div>
-    {% endif %}
-    {% if ipc_status and ipc_status.contains_unofficial %}
-    <div class="alert alert-info" role="alert">
-      <p class="mb-1">
-        Algunos meses del IPC se completaron con una fuente secundaria
-        {% if ipc_status.fallback_source %}({{ ipc_status.fallback_source }}){% endif %}.
-      </p>
-      <p class="mb-0"><strong>Meses alcanzados:</strong> {{ ipc_status.unofficial_months_text or ipc_status.unofficial_months|join(', ') }}</p>
+    {% if ipc_status %}
+    <div class="alert {{ ipc_status.display_class or 'alert-info' }}" role="alert">
+      {{ ipc_status.display_message }}
     </div>
     {% endif %}
     <div class="text-end mb-2">Fecha de hoy: {{ fecha_hoy }}</div>
