@@ -7,6 +7,7 @@ import unittest
 from datetime import datetime, timezone, date
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import requests
@@ -198,6 +199,93 @@ class FetchIpcDataTests(unittest.TestCase):
         self.assertTrue(status["contains_unofficial"])
         self.assertIn("2024-06", status["unofficial_months"])
 
+    def test_primary_success_but_missing_required_month_uses_fallback_with_error(self):
+        response = mock.Mock()
+        response.status_code = 200
+        response.headers = {}
+        response.raise_for_status = mock.Mock()
+        response.json.return_value = {"data": [["2024-05-01", "0.015"]]}
+
+        fallback_rows = [["2024-06-01", "0.019", "backup"]]
+        fallback_info = {"unofficial_months": ["2024-06"], "fallback_source": "https://fallback.example"}
+
+        fallback_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+        def fake_fetch_backup_ipc(*args, **kwargs):
+            fallback_calls.append((args, kwargs))
+            return ["fecha", "variacion_mensual", "source"], fallback_rows, fallback_info
+
+        required_key = ipc_service._month_key("2024-06")
+
+        with mock.patch.object(ipc_service.requests, "get", return_value=response) as mocked_get, (
+            mock.patch.object(ipc_service, "fetch_backup_ipc", side_effect=fake_fetch_backup_ipc)
+        ) as mocked_backup, mock.patch.object(
+            ipc_service, "_required_month_key", return_value=required_key
+        ):
+            header, rows, status = ipc_service.fetch_ipc_data()
+
+        self.assertEqual(mocked_get.call_count, 1)
+        self.assertEqual(mocked_backup.call_count, 1)
+        self.assertEqual(len(fallback_calls), 1)
+        first_call_args, first_call_kwargs = fallback_calls[0]
+        self.assertFalse(first_call_args)
+        self.assertFalse(first_call_kwargs)
+
+        self.assertEqual(header, ["fecha", "variacion_mensual", "source"])
+        self.assertEqual(
+            rows,
+            [["2024-05", "0.015", "official"], ["2024-06", "0.019", "backup"]],
+        )
+        self.assertTrue(status["used_backup"])
+        self.assertFalse(status["stale"])
+        self.assertIsInstance(status["error"], dict)
+        self.assertEqual(status["error"].get("code"), "primary_stale")
+        self.assertEqual(status["error"].get("message"), "La API principal no se actualizó")
+        self.assertIn("2024-06", status["unofficial_months"])
+        self.assertEqual(status["fallback_source"], fallback_info["fallback_source"])
+
+    def test_primary_and_fallback_missing_required_month_preserves_error(self):
+        response = mock.Mock()
+        response.status_code = 200
+        response.headers = {}
+        response.raise_for_status = mock.Mock()
+        response.json.return_value = {"data": [["2024-05-01", "0.015"]]}
+
+        fallback_header = ["fecha", "variacion_mensual", "source"]
+        fallback_rows = []
+        fallback_info = {"unofficial_months": [], "fallback_source": "https://fallback.example"}
+
+        fallback_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+        def fake_fetch_backup_ipc(*args, **kwargs):
+            fallback_calls.append((args, kwargs))
+            return fallback_header, fallback_rows, fallback_info
+
+        required_key = ipc_service._month_key("2024-06")
+
+        with mock.patch.object(ipc_service.requests, "get", return_value=response) as mocked_get, (
+            mock.patch.object(ipc_service, "fetch_backup_ipc", side_effect=fake_fetch_backup_ipc)
+        ) as mocked_backup, mock.patch.object(
+            ipc_service, "_required_month_key", return_value=required_key
+        ):
+            header, rows, status = ipc_service.fetch_ipc_data()
+
+        self.assertEqual(mocked_get.call_count, 1)
+        self.assertEqual(mocked_backup.call_count, 1)
+        self.assertEqual(len(fallback_calls), 1)
+        first_call_args, first_call_kwargs = fallback_calls[0]
+        self.assertFalse(first_call_args)
+        self.assertFalse(first_call_kwargs)
+        self.assertEqual(header, ["fecha", "variacion_mensual", "source"])
+        self.assertEqual(rows, [["2024-05", "0.015", "official"]])
+        self.assertFalse(status["used_backup"])
+        self.assertTrue(status["stale"])
+        self.assertIsInstance(status["error"], dict)
+        self.assertEqual(status["error"].get("code"), "primary_stale")
+        self.assertEqual(status["error"].get("message"), "La API principal no se actualizó")
+        self.assertEqual(status["unofficial_months"], [])
+        self.assertEqual(status["fallback_source"], fallback_info["fallback_source"])
+
     def test_invalid_api_response_uses_cache(self):
         rows = [["2024-05-01", "1.50"]]
         self._write_cache(rows)
@@ -292,10 +380,14 @@ class FetchIpcDataTests(unittest.TestCase):
         self.assertTrue(status_backup["contains_unofficial"])
         self.assertEqual(status_backup["unofficial_months"], ["2024-07", "2024-08"])
 
-        self.assertEqual(header_success, ["fecha", "variacion_mensual"])
+        self.assertEqual(header_success, ["fecha", "variacion_mensual", "source"])
         self.assertEqual(
             rows_success,
-            [["2024-07-01", "0.021"], ["2024-08-01", "0.022"], ["2024-09-01", "0.023"]],
+            [
+                ["2024-07", "0.021", "official"],
+                ["2024-08", "0.022", "official"],
+                ["2024-09", "0.023", "official"],
+            ],
         )
         self.assertFalse(status_success["used_backup"])
         self.assertFalse(status_success["contains_unofficial"])

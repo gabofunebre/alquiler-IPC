@@ -8,6 +8,15 @@ import requests
 ErrorOrigin = Literal["external_service", "internal"]
 
 
+class PrimarySourceStaleError(RuntimeError):
+    """Raised when the primary IPC source does not provide the required month."""
+
+    DEFAULT_MESSAGE = "La API principal no se actualizó"
+
+    def __init__(self, message: str | None = None):
+        super().__init__(message or self.DEFAULT_MESSAGE)
+
+
 @dataclass
 class IPCErrorInfo:
     """Structured metadata describing an IPC fetching error."""
@@ -93,6 +102,14 @@ def translate_ipc_exception(exc: Exception) -> IPCErrorInfo:
             code="request_error",
             origin="external_service",
             message="No se pudo obtener el IPC desde el servidor del INDEC. Intentá nuevamente más tarde.",
+            detail=str(exc) or None,
+        )
+
+    if isinstance(exc, PrimarySourceStaleError):
+        return IPCErrorInfo(
+            code="primary_stale",
+            origin="external_service",
+            message=PrimarySourceStaleError.DEFAULT_MESSAGE,
             detail=str(exc) or None,
         )
 
