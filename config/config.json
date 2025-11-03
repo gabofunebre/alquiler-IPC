@@ -1,3 +1,4 @@
 {
-  "api_url": "https://apis.datos.gob.ar/series/api/series?ids=145.3_INGNACUAL_DICI_M_38&format=json&start_date=2016-01&limit=1000"
+  "api_url": "https://apis.datos.gob.ar/series/api/series?ids=145.3_INGNACUAL_DICI_M_38&format=json&start_date=2016-01&limit=1000",
+  "fallback_api_url": "https://api.argentinadatos.com/v1/finanzas/indices/inflacion"
 }
